@@ -5,7 +5,19 @@
 
 int main(int argc, char *argv[])
 {
-    printf("Hello World Coffin");
+    const char *filepath = "test.txt";
+    uint8_t hash[32];
+        if (calculate_file_sha256(filepath, hash) == 0)
+     {
+         printf("SHA-256 Hash: ");
+         for (int i = 0; i < 32; ++i) // change this 32 to 16 for MD5
+         {
+             printf("%02x", hash[i]);
+         }
+         printf("\n");
+     }
+    printf("Hello World Coffin\n");
+
 }
 
 // Example usage change hash size to 16 for MD5
