@@ -5,10 +5,17 @@
 
 int main(int argc, char *argv[])
 {
-    const char *filepath = "test.txt";
-    uint8_t hash[32];
+    const char *filepath;
+    uint8_t hash[32];   // for the SHA256
     uint8_t md5hash[16]; // 256 bits = 32 bytes change this to 128 bits 16 bytes for MD5
 
+    if (argc > 1) {
+        filepath = argv[1]; //TODO need some error checking here
+    } else {
+        print_usage (argv); // in common.c
+        return 1;
+    };
+   
     printf("Hello World Coffin\n");
 
     if (calculate_file_sha256(filepath, hash) == 0)
@@ -24,7 +31,7 @@ int main(int argc, char *argv[])
      if (calculate_file_md5(filepath, md5hash) == 0)
         {
             printf("MD5 Hash: ");
-            for (int i = 0; i < 16; ++i) // change this 32 to 16 for MD5
+            for (int i = 0; i < 16; ++i) // change this to 16 for MD5
                 {
                     printf("%02x", md5hash[i]);
                 }
@@ -34,24 +41,7 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-// Example usage change hash size to 16 for MD5
-// int main()
-// {
-//     const char *filepath = "example.txt";
-//     uint8_t hash[32]; // 256 bits = 32 bytes change this to 128 bits 16 bytes for MD5
 
-//     if (calculate_file_sha256(filepath, hash) == 0)
-//     {
-//         printf("SHA-256 Hash: ");
-//         for (int i = 0; i < 32; ++i) // change this 32 to 16 for MD5
-//         {
-//             printf("%02x", hash[i]);
-//         }
-//         printf("\n");
-//     }
-
-//     return 0;
-// }
 
 // save this snippet for later
 
