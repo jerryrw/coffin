@@ -44,9 +44,9 @@ int main(int argc, char *argv[])
         printf("\n");
     }
 
-    //     if (parse_pe_file(argv[1], &pe_info)) {
-    //         print_pe_info(&pe_info);
-    //     }
+    if (parse_pe_file(filepath, &pe_info)) {
+        print_pe_info(&pe_info);
+    }
 
     return 0;
 }
