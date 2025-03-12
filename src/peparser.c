@@ -14,7 +14,10 @@ int parse_pe_file(const char *filepath, PEInfo *pe_info)
         return 0;
     }
 
+//printf ("Opening File.\n");
+    
     // Get file size
+//printf("Getting file size\n");
     fseek(file, 0, SEEK_END);
     pe_info->file_size = ftell(file);
     rewind(file);
@@ -23,6 +26,7 @@ int parse_pe_file(const char *filepath, PEInfo *pe_info)
     strncpy(pe_info->filename, filepath, sizeof(pe_info->filename) - 1);
 
     // Read DOS Header
+//printf ("Reading DOS header\n");
     DOS_Header dos_header;
     if (fread(&dos_header, sizeof(DOS_Header), 1, file) != 1)
     {
@@ -32,6 +36,7 @@ int parse_pe_file(const char *filepath, PEInfo *pe_info)
     }
 
     // Check DOS signature
+//printf ("Checking DOS Magic\n");
     if (dos_header.e_magic != DOS_SIGNATURE)
     {
         fprintf(stderr, "Not a valid DOS executable\n");
@@ -40,11 +45,14 @@ int parse_pe_file(const char *filepath, PEInfo *pe_info)
     }
 
     // Seek to PE header
+//printf ("Seeking to the PE header\n");
     fseek(file, dos_header.e_lfanew, SEEK_SET);
 
     // Read PE Signature
+//printf ("Reading PE signature\n");
     uint16_t pe_signature;
-    if (fread(&pe_signature, sizeof(uint16_t), 1, file) != 1)
+    if (fread(&pe_signature, sizeof(uint16_t), 1, file) != 1)   //this is the root cause of a file missalignment
+                                                                // PE signature is 4 bytes not 2
     {
         fprintf(stderr, "Failed to read PE signature\n");
         fclose(file);
@@ -52,14 +60,19 @@ int parse_pe_file(const char *filepath, PEInfo *pe_info)
     }
 
     // Verify PE Signature
+//printf ("Verifying Signature\n");
     if (pe_signature != PE_SIGNATURE)
     {
         fprintf(stderr, "Invalid PE signature\n");
         fclose(file);
         return 0;
     }
+    // move past the \0\0 of the PE signature
+//printf ("Advancing two bytes\n");
+    fseek (file, 2, SEEK_CUR);
 
     // Read COFF Header
+//printf ("Reading COFF header\n");
     COFF_Header coff_header;
     if (fread(&coff_header, sizeof(COFF_Header), 1, file) != 1)
     {
@@ -74,6 +87,7 @@ int parse_pe_file(const char *filepath, PEInfo *pe_info)
     pe_info->number_of_sections = coff_header.NumberOfSections;
     pe_info->characteristics = coff_header.Characteristics;
 
+//printf ("Optional Header Size %x\n", coff_header.SizeOfOptionalHeader);
     // Determine if 32-bit or 64-bit
     uint16_t optional_magic;
     if (fread(&optional_magic, sizeof(uint16_t), 1, file) != 1)
@@ -89,7 +103,7 @@ int parse_pe_file(const char *filepath, PEInfo *pe_info)
     // Store magic and bit-ness
     pe_info->magic = optional_magic;
     pe_info->is_64bit = (optional_magic == PE32PLUS_MAGIC);
-
+    
     // Read appropriate optional header based on architecture
     if (!pe_info->is_64bit)
     {
@@ -105,6 +119,8 @@ int parse_pe_file(const char *filepath, PEInfo *pe_info)
         pe_info->size_of_code = optional_header.SizeOfCode;
         pe_info->entry_point = optional_header.AddressOfEntryPoint;
         pe_info->image_base = optional_header.ImageBase;
+//printf ("RVA number %d\n",optional_header.NumberOfRVAAndSizes);
+        pe_info->number_of_rva_directories = optional_header.NumberOfRVAAndSizes;
     }
     else
     {
@@ -120,7 +136,16 @@ int parse_pe_file(const char *filepath, PEInfo *pe_info)
         pe_info->size_of_code = optional_header.SizeOfCode;
         pe_info->entry_point = optional_header.AddressOfEntryPoint;
         pe_info->image_base = optional_header.ImageBase;
+//printf ("RVA number %d\n",optional_header.NumberOfRVAAndSizes); 
+        pe_info->number_of_rva_directories = optional_header.NumberOfRVAAndSizes;
     }
+
+    //TODO -----------------------------------
+    // add code for accessing the RVA directory
+    RVA_Directories rva_dirs;
+    fread(&rva_dirs, sizeof(RVA_Data_Directory)*pe_info->number_of_rva_directories, 1, file);
+
+    //TODO -----------------------------------
 
     // Parse Sections
     pe_info->section_count = 0;
@@ -165,7 +190,7 @@ void print_pe_info(const PEInfo *pe_info)
     printf("  Machine: 0x%04X (%s)\n", pe_info->machine,
            pe_info->machine == IMAGE_FILE_MACHINE_I386 ? "x86" : pe_info->machine == IMAGE_FILE_MACHINE_AMD64 ? "x64"
                                                                                                               : "Unknown");
-    printf("  Timestamp: %u\n", pe_info->timestamp);
+    printf("  Timestamp: %u\n", pe_info->timestamp); //TODO convert this into a human readable time format
     printf("  Number of Sections: %d\n", pe_info->number_of_sections);
     printf("  Characteristics: 0x%04X\n", pe_info->characteristics);
 
@@ -173,7 +198,7 @@ void print_pe_info(const PEInfo *pe_info)
     printf("  Magic: 0x%04X\n", pe_info->magic);
     printf("  Size of Code: %u\n", pe_info->size_of_code);
     printf("  Entry Point: 0x%08X\n", pe_info->entry_point);
-    printf("  Image Base: 0x%08X\n", pe_info->image_base); // TODO fix this?
+    printf("  Image Base: 0x%08X\n", pe_info->image_base);
 
     printf("\nSections:\n");
     for (int i = 0; i < pe_info->section_count; i++)

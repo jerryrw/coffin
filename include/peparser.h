@@ -1,3 +1,6 @@
+//https://stackoverflow.com/questions/76815878/understanding-sizeofheaders
+//https://0xrick.github.io/win-internals/pe4/
+
 #ifndef PEPARSER_H
 #define PEPARSER_H
 // PE File Constants
@@ -47,6 +50,32 @@ typedef struct
     uint16_t Characteristics;
 } COFF_Header;
 
+// for the RVA data array
+typedef struct {
+    uint32_t VirtualAddress;
+    uint32_t Size;
+} RVA_Data_Directory;
+
+//RVA Directories
+typedef struct {
+    RVA_Data_Directory ExportTable;
+    RVA_Data_Directory ImportTable;
+    RVA_Data_Directory ResourceTable;
+    RVA_Data_Directory ExceptionTable;
+    RVA_Data_Directory CertificateTable;
+    RVA_Data_Directory BaseRelocationTable;
+    RVA_Data_Directory Debug;
+    RVA_Data_Directory Architecture; // must be 0
+    RVA_Data_Directory GlobalPointer;
+    RVA_Data_Directory TLSTable;
+    RVA_Data_Directory LoadConfigTable;
+    RVA_Data_Directory BoundImport;
+    RVA_Data_Directory IAT;
+    RVA_Data_Directory DelayImportDescriptor;
+    RVA_Data_Directory CLRRuntimeHeader;
+    RVA_Data_Directory Reserved; // must be 0
+} RVA_Directories;
+
 // Optional Header for 32-bit
 typedef struct
 {
@@ -62,6 +91,26 @@ typedef struct
     uint32_t ImageBase;
     uint32_t SectionAlignment;
     uint32_t FileAlignment;
+    // added
+    uint16_t MajorOperatingSystemVersion;
+    uint16_t MinorOperatingSystemVersion;
+    uint16_t MajorImageVersion;
+    uint16_t MinorImageVersion;
+    uint16_t MajorSubsytemVersion;
+    uint16_t MinorSubsytemVersion;
+    uint32_t Win32VersionValue;
+    uint32_t SizeOfImage;
+    uint32_t SizeOfHeaders;
+    uint32_t CheckSum;
+    uint16_t Subsystem;
+    uint16_t DLLCharacteristics;
+    uint32_t SizeOfStackReserve;
+    uint32_t SizeOfStackCommit;
+    uint32_t SizeOfHeapReserve;
+    uint32_t SizeOfHeapCommit;
+    uint32_t LoaderFlags;
+    uint32_t NumberOfRVAAndSizes;
+    
 } Optional_Header32;
 
 // Optional Header for 64-bit
@@ -78,6 +127,26 @@ typedef struct
     uint64_t ImageBase;
     uint32_t SectionAlignment;
     uint32_t FileAlignment;
+    // added
+    uint16_t MajorOperatingSystemVersion;
+    uint16_t MinorOperatingSystemVersion;
+    uint16_t MajorImageVersion;
+    uint16_t MinorImageVersion;
+    uint16_t MajorSubsytemVersion;
+    uint16_t MinorSubsytemVersion;
+    uint32_t Win32VersionValue;
+    uint32_t SizeOfImage;
+    uint32_t SizeOfHeaders;
+    uint32_t CheckSum;
+    uint16_t Subsystem;
+    uint16_t DLLCharacteristics;
+    uint64_t SizeOfStackReserve;
+    uint64_t SizeOfStackCommit;
+    uint64_t SizeOfHeapReserve;
+    uint64_t SizeOfHeapCommit;
+    uint32_t LoaderFlags;
+    uint32_t NumberOfRVAAndSizes;
+
 } Optional_Header64;
 
 typedef struct
@@ -114,7 +183,7 @@ typedef struct
     uint32_t size_of_code;
     uint32_t entry_point;
     uint64_t image_base;
-
+    uint32_t number_of_rva_directories;
     // Sections
     struct
     {

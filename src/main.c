@@ -4,7 +4,8 @@
 #include "md5.h"
 #include "peparser.h"
 
-//test 
+//TODO verify SHA and MD5 values
+
 int main(int argc, char *argv[])
 {
     const char *filepath;
