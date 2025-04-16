@@ -1,5 +1,9 @@
 // https://stackoverflow.com/questions/76815878/understanding-sizeofheaders
 // https://0xrick.github.io/win-internals/pe4/
+// https://learn.microsoft.com/en-us/windows/win32/debug/pe-format
+// https://tech-zealots.com/malware-analysis/pe-portable-executable-structure-malware-analysis-part-2/
+// https://tech-zealots.com/malware-analysis/journey-towards-import-address-table-of-an-executable-file/
+// https://0xrick.github.io/win-internals/pe8/
 
 #ifndef PEPARSER_H
 #define PEPARSER_H

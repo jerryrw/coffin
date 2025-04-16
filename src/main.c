@@ -1,7 +1,5 @@
 #include <stdio.h>
 #include "common.h"
-#include "sha256.h"
-#include "md5.h"
 #include "peparser.h"
 
 int main(int argc, char *argv[])
