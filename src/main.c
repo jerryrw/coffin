@@ -4,15 +4,9 @@
 #include "md5.h"
 #include "peparser.h"
 
-//testing
-
-//TODO verify SHA and MD5 values
-
 int main(int argc, char *argv[])
 {
-    const char *filepath;
-    uint8_t hash[32];    // for the SHA256
-    uint8_t md5hash[16]; // 256 bits = 32 bytes change this to 128 bits 16 bytes for MD5
+    const char *filepath; // file to analyize
 
     PEInfo pe_info = {0};
 
@@ -26,29 +20,8 @@ int main(int argc, char *argv[])
         return 1;
     };
 
-    printf("Hello World Coffin\n");
-
-    if (calculate_file_sha256(filepath, hash) == 0)
+    if (parse_pe_file(filepath, &pe_info))
     {
-        printf("SHA-256 Hash: ");
-        for (int i = 0; i < 32; ++i) // change this 32 to 16 for MD5
-        {
-            printf("%02x", hash[i]);
-        }
-        printf("\n");
-    }
-
-    if (calculate_file_md5(filepath, md5hash) == 0)
-    {
-        printf("MD5 Hash: ");
-        for (int i = 0; i < 16; ++i) // change this to 16 for MD5
-        {
-            printf("%02x", md5hash[i]);
-        }
-        printf("\n");
-    }
-
-    if (parse_pe_file(filepath, &pe_info)) {
         print_pe_info(&pe_info);
     }
 

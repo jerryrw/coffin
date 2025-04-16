@@ -1,5 +1,5 @@
-//https://stackoverflow.com/questions/76815878/understanding-sizeofheaders
-//https://0xrick.github.io/win-internals/pe4/
+// https://stackoverflow.com/questions/76815878/understanding-sizeofheaders
+// https://0xrick.github.io/win-internals/pe4/
 
 #ifndef PEPARSER_H
 #define PEPARSER_H
@@ -51,13 +51,15 @@ typedef struct
 } COFF_Header;
 
 // for the RVA data array
-typedef struct {
+typedef struct
+{
     uint32_t VirtualAddress;
     uint32_t Size;
 } RVA_Data_Directory;
 
-//RVA Directories
-typedef struct {
+// RVA Directories
+typedef struct
+{
     RVA_Data_Directory ExportTable;
     RVA_Data_Directory ImportTable;
     RVA_Data_Directory ResourceTable;
@@ -110,7 +112,7 @@ typedef struct
     uint32_t SizeOfHeapCommit;
     uint32_t LoaderFlags;
     uint32_t NumberOfRVAAndSizes;
-    
+
 } Optional_Header32;
 
 // Optional Header for 64-bit
@@ -172,6 +174,8 @@ typedef struct
     // Identification
     uint16_t machine;
     int is_64bit;
+    char sha256hashstring[256];
+    char md5hashstring[256];
 
     // COFF Header Information
     uint32_t timestamp;
