@@ -20,7 +20,7 @@ int main(int argc, char *argv[])
         return 1;
     };
 
-    if (parse_pe_file(filepath, &pe_info))
+    if (parse_pe_file(filepath, &pe_info)) // TODO -handle the error return
     {
         print_pe_info(&pe_info);
     }
