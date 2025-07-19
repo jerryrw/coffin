@@ -4,7 +4,7 @@
 // https://tech-zealots.com/malware-analysis/pe-portable-executable-structure-malware-analysis-part-2/
 // https://tech-zealots.com/malware-analysis/journey-towards-import-address-table-of-an-executable-file/
 // https://0xrick.github.io/win-internals/pe8/
-
+// https://tech-zealots.com/malware-analysis/pe-portable-executable-structure-malware-analysis-part-2/
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,7 +31,7 @@ int main(int argc, char *argv[])
 
     if (parse_pe_file(filepath, &pe_info)) // TODO -handle the error return
     {
-        calc_entropy (filepath, &pe_info); // must be called before print_pe_info
+        calc_entropy(filepath, &pe_info); // must be called before print_pe_info
         print_pe_info(&pe_info);
     }
 
