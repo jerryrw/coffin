@@ -7,6 +7,9 @@
 
 #ifndef PEPARSER_H
 #define PEPARSER_H
+
+#include <stdint.h> // for the uintXX_t definitions
+
 // PE File Constants
 #define PE_SIGNATURE 0x4550  // "PE\0\0"
 #define DOS_SIGNATURE 0x5A4D // "MZ"
@@ -170,6 +173,7 @@ typedef struct
 } Section_Header;
 
 // Comprehensive PE File Information Structure
+// this is where the data to be printed lives
 typedef struct
 {
     char filename[256];
@@ -198,8 +202,10 @@ typedef struct
         char name[9]; // 8 chars + null terminator
         uint32_t virtual_size;
         uint32_t virtual_address;
+        uint32_t PointerToRawData;
         uint32_t raw_size;
         uint32_t characteristics;
+        double entropy;
     } sections[16]; // Assuming max 16 sections
     int section_count;
 } PEInfo;

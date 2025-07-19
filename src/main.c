@@ -1,5 +1,14 @@
+// https://stackoverflow.com/questions/76815878/understanding-sizeofheaders
+// https://0xrick.github.io/win-internals/pe4/
+// https://learn.microsoft.com/en-us/windows/win32/debug/pe-format
+// https://tech-zealots.com/malware-analysis/pe-portable-executable-structure-malware-analysis-part-2/
+// https://tech-zealots.com/malware-analysis/journey-towards-import-address-table-of-an-executable-file/
+// https://0xrick.github.io/win-internals/pe8/
+
+
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "common.h"
 #include "peparser.h"
 #include "entropy.h"
@@ -22,36 +31,10 @@ int main(int argc, char *argv[])
 
     if (parse_pe_file(filepath, &pe_info)) // TODO -handle the error return
     {
+        calc_entropy (filepath, &pe_info); // must be called before print_pe_info
         print_pe_info(&pe_info);
     }
-    //-----------------------------Test Entropy Code
-    // Test case 1: All same bytes (minimum entropy)
-    unsigned char uniform[1000];
-    memset(uniform, 'A', sizeof(uniform));
-    analyze_entropy(uniform, sizeof(uniform), "uniform data (all 'A's)");
 
-    // Test case 2: Alternating pattern
-    unsigned char pattern[1000];
-    for (int i = 0; i < 1000; i++)
-    {
-        pattern[i] = (i % 2) ? 'A' : 'B';
-    }
-    analyze_entropy(pattern, sizeof(pattern), "alternating pattern");
-
-    // Test case 3: Text data
-    const char *text = "Hello, World! This is a sample text for entropy calculation.";
-    analyze_entropy((const unsigned char *)text, strlen(text), "sample text");
-
-    // Test case 4: Pseudo-random data
-    unsigned char random_data[1000];
-    srand(12345); // Fixed seed for reproducible results
-    for (int i = 0; i < 1000; i++)
-    {
-        random_data[i] = rand() % 256;
-    }
-    analyze_entropy(random_data, sizeof(random_data), "pseudo-random data");
-
-    //-----------------------------End Test Entropy Code
     return 0;
 }
 

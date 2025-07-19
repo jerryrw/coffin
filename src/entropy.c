@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
+#include "common.h"
+#include "peparser.h"
 
 /**
  * Calculate the Shannon entropy of a memory buffer
@@ -74,6 +76,53 @@ void analyze_entropy(const unsigned char *buffer, size_t size, const char *descr
     }
     printf("\n");
 }
+
+void calc_entropy (const char *filepath, PEInfo *pe_info) { //- TODO -error handling
+    FILE *file = fopen(filepath, "rb");           
+    for (int i=0; i<pe_info->section_count; i++) {    //loop through the sections
+        fseek (file, pe_info->sections[i].PointerToRawData, SEEK_SET);              //seek to the section begin
+        
+        size_t buffer_size = (size_t)pe_info->sections[i].raw_size;
+        unsigned char *buffer = (unsigned char *)malloc(buffer_size);
+        fread (buffer, 1, buffer_size, file);
+               
+        pe_info->sections[i].entropy = calculate_entropy (buffer, buffer_size); //save the entropy
+       
+        //printf ("Entropy for: %s %f\n", pe_info->sections[i].name, pe_info->sections[i].entropy);
+        free (buffer);
+       
+    }
+    fclose(file);                                                                   
+}    
+/**
+     * void calc_entropy (const char *filepath, PEInfo *pe_info)
+     * void calc_entropy (filepath, &pe_info)
+     * here we need to open the file
+     * FILE *file = fopen(filepath, "rb");
+     * loop through the number of sections
+     * for (i=1; i<pe_info.sectionCount; i++)
+     *  seek to the pointertorawdata
+     *      fseek(file, pe_info->sections[i].pointertorawdata, SEEK_SET)
+     *  create a buffer of rawsize
+     *      unsigned char* buffer = malloc (pe_info->sections[i].sizeofrawdata)
+     *  read rawsize data from the file
+     *      fread (buffer, 1, pe_info->sections[i].sizeofrawdata)
+     *  calc the entropy of the buffer and save the entropy in the pe_info struct
+     *  needs to be a double
+     *      pe_info->sections[i].entropy = calculate_entropy(&buffer, sizeof(buffer))
+     *  release buffer
+     *      free (buffer)
+     *  loop
+     */
+
+
+
+
+
+
+
+
+
 
 // Example usage and test cases
 /** --moved to main.c
