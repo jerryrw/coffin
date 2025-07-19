@@ -1,6 +1,8 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include "common.h"
 #include "peparser.h"
+#include "entropy.h"
 
 int main(int argc, char *argv[])
 {
@@ -22,7 +24,34 @@ int main(int argc, char *argv[])
     {
         print_pe_info(&pe_info);
     }
+    //-----------------------------Test Entropy Code
+    // Test case 1: All same bytes (minimum entropy)
+    unsigned char uniform[1000];
+    memset(uniform, 'A', sizeof(uniform));
+    analyze_entropy(uniform, sizeof(uniform), "uniform data (all 'A's)");
 
+    // Test case 2: Alternating pattern
+    unsigned char pattern[1000];
+    for (int i = 0; i < 1000; i++)
+    {
+        pattern[i] = (i % 2) ? 'A' : 'B';
+    }
+    analyze_entropy(pattern, sizeof(pattern), "alternating pattern");
+
+    // Test case 3: Text data
+    const char *text = "Hello, World! This is a sample text for entropy calculation.";
+    analyze_entropy((const unsigned char *)text, strlen(text), "sample text");
+
+    // Test case 4: Pseudo-random data
+    unsigned char random_data[1000];
+    srand(12345); // Fixed seed for reproducible results
+    for (int i = 0; i < 1000; i++)
+    {
+        random_data[i] = rand() % 256;
+    }
+    analyze_entropy(random_data, sizeof(random_data), "pseudo-random data");
+
+    //-----------------------------End Test Entropy Code
     return 0;
 }
 
