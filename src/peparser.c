@@ -193,13 +193,14 @@ int parse_pe_file(const char *filepath, PEInfo *pe_info)
 
         pe_info->sections[i].virtual_size = section_header.VirtualSize;
         pe_info->sections[i].virtual_address = section_header.VirtualAddress;
+        pe_info->sections[i].PointerToRawData = section_header.PointerToRawData;
         pe_info->sections[i].raw_size = section_header.SizeOfRawData;
         pe_info->sections[i].characteristics = section_header.Characteristics;
 
         pe_info->section_count++;
     }
 
-    fclose(file);
+    fclose(file); // end of header information, section data is after this
     return 1;
 }
 
@@ -235,8 +236,10 @@ void print_pe_info(const PEInfo *pe_info)
         printf("    Name: %s\n", pe_info->sections[i].name);
         printf("    Virtual Size: %u\n", pe_info->sections[i].virtual_size);
         printf("    Virtual Address: 0x%08X\n", pe_info->sections[i].virtual_address);
+        printf("    Pointer to raw data: 0x%08X\n", pe_info->sections[i].PointerToRawData);
         printf("    Raw Size: %u\n", pe_info->sections[i].raw_size);
-        printf("    Characteristics: 0x%08X\n", pe_info->sections[i].characteristics);
+        printf("    Entropy: %f\n", pe_info->sections[i].entropy);
+        printf("    Characteristics: 0x%08X\n", pe_info->sections[i].characteristics); // TODO -make this human readable
     }
 }
 
