@@ -13,9 +13,11 @@ int parse_pe_file(const char *filepath, PEInfo *pe_info)
 {
 
     uint8_t sha256hash[32]; // for the SHA256
-    char sha256string[64] = {NULL};
+    // char sha256string[64] = {NULL};
+    char sha256string[64] = {0};
     uint8_t md5hash[16]; // 256 bits = 32 bytes change this to 128 bits 16 bytes for MD5
-    char md5string[32] = {NULL};
+    // char md5string[32] = {NULL};
+    char md5string[32] = {0};
 
     FILE *file = fopen(filepath, "rb");
     if (!file)

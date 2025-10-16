@@ -16,7 +16,7 @@
 int main(int argc, char *argv[])
 {
     const char *filepath; // file to analyize
-
+                          // something
     PEInfo pe_info = {0};
 
     if (argc > 1)
