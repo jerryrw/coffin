@@ -63,6 +63,7 @@ int main(int argc, char *argv[])
         // PE file (DOS/Windows executable)
         if (parse_pe_file(filepath, &pe_info) == 1)
         {
+            calc_entropy(filepath, &pe_info);
             print_pe_info(&pe_info);
         }
     }
