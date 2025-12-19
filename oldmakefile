@@ -8,16 +8,8 @@ clean:
 	rm -f obj/*.o
 	rm -f bin/*
 
-.PHONY: clean
+$(TARGET): $(OBJ)
+	gcc -o $@ $? -lm
 
-obj:
-	mkdir -p obj
-
-bin:
-	mkdir -p bin
-
-$(TARGET): $(OBJ) | bin
-	gcc -o $@ $^ -lm
-
-obj/%.o : src/%.c | obj
+obj/%.o : src/%.c
 	gcc -c $< -o $@ -Iinclude

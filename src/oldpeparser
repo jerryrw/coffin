@@ -9,15 +9,17 @@
 
 // Function to parse PE file
 int parse_pe_file(const char *filepath, PEInfo *pe_info)
-// test
+
 {
 
     uint8_t sha256hash[32]; // for the SHA256
-    /* 32 bytes -> 64 hex chars + NUL */
-    char sha256string[65] = {0};
-    uint8_t md5hash[16]; /* 16 bytes -> 32 hex chars + NUL */
-    char md5string[33] = {0};
+    // char sha256string[64] = {NULL};
+    char sha256string[64] = {0};
+    uint8_t md5hash[16]; // 256 bits = 32 bytes change this to 128 bits 16 bytes for MD5
+    // char md5string[32] = {NULL};
+    char md5string[32] = {0};
 
+    printf("Opening file\n");
     FILE *file = fopen(filepath, "rb");
 
     if (!file)
@@ -27,39 +29,26 @@ int parse_pe_file(const char *filepath, PEInfo *pe_info)
     }
 
     // calculate the sha256 hash
+    printf("Calculating sha256\n");
     if (calculate_file_sha256(filepath, sha256hash) == 0)
     {
-        size_t off = 0;
-        for (int i = 0; i < 32; ++i)
+        for (int i = 0; i < 32; ++i) // change this 32 to 16 for MD5
         {
-            int n = snprintf(sha256string + off, sizeof(sha256string) - off, "%02x", sha256hash[i]);
-            if (n <= 0)
-                break;
-            off += (size_t)n;
-            if (off >= sizeof(sha256string) - 1)
-                break;
+            sprintf(sha256string, "%s%02x", sha256string, sha256hash[i]);
         }
-        /* copy into pe_info safely */
-        strncpy(pe_info->sha256hashstring, sha256string, sizeof(pe_info->sha256hashstring) - 1);
-        pe_info->sha256hashstring[sizeof(pe_info->sha256hashstring) - 1] = '\0';
+        strncpy(pe_info->sha256hashstring, sha256string, sizeof(sha256string));
     }
 
     // calculate the MD5 hash
+    printf("Calculating the MD5\n");
     if (calculate_file_md5(filepath, md5hash) == 0)
     {
-        size_t off = 0;
-        for (int i = 0; i < 16; ++i)
+        for (int i = 0; i < 16; ++i) // change this to 16 for MD5
         {
-            int n = snprintf(md5string + off, sizeof(md5string) - off, "%02x", md5hash[i]);
-            if (n <= 0)
-                break;
-            off += (size_t)n;
-            if (off >= sizeof(md5string) - 1)
-                break;
+            sprintf(md5string, "%s%02x", md5string, md5hash[i]);
         }
-        /* store the md5 hash string safely */
-        strncpy(pe_info->md5hashstring, md5string, sizeof(pe_info->md5hashstring) - 1);
-        pe_info->md5hashstring[sizeof(pe_info->md5hashstring) - 1] = '\0';
+        // store the md5 hash string
+        strncpy(pe_info->md5hashstring, md5string, sizeof(md5string));
     }
 
     // Get file size
