@@ -22,8 +22,10 @@ int main(int argc, char *argv[])
     ELFInfo elf_info = {0};
     MachOInfo mach_info = {0};
 
+    // check command line arguments
     if (argc > 1)
     {
+        // just the file to analize for now
         filepath = argv[1];
     }
     else
@@ -40,7 +42,8 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    uint8_t magic[4];
+    uint8_t magic[4]; // need 3 bytes for ELF and PE, 4 for Mach-O
+
     if (fread(magic, 1, 4, file) != 4)
     {
         fprintf(stderr, "Cannot read file header\n");
@@ -63,7 +66,7 @@ int main(int argc, char *argv[])
         // PE file (DOS/Windows executable)
         if (parse_pe_file(filepath, &pe_info) == 1)
         {
-            calc_entropy(filepath, &pe_info);
+            calc_entropy(filepath, &pe_info); // calculate the entropy of each section
             print_pe_info(&pe_info);
         }
     }
