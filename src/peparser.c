@@ -1,228 +1,123 @@
+/*
+ * Read the outer structure of a Windows Portable Executable (PE) file.
+ * PE starts with a DOS header, whose e_lfanew field points to the PE signature.
+ * A COFF header and an "optional" header follow; the latter is required here.
+ * Sections describe both disk storage and memory layout. Detailed import, export,
+ * and resource parsing lives in pe_details.c; presentation lives in report.c.
+ */
+
 #include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
 #include <string.h>
-#include "sha256.h"
-#include "md5.h"
+#include <stdlib.h>
+#include <time.h>
 #include "peparser.h"
-#include "common.h"
 
-// Function to parse PE file
-int parse_pe_file(const char *filepath, PEInfo *pe_info)
-// test
+/*
+ * Fill info from checked byte arrays rather than fread-ing whole C structs.
+ * memset makes every pointer NULL so cleanup works on partially parsed input.
+ * On failure this routine frees its arrays; the caller may safely clean up again.
+ */
+int parse_pe_file(const InputFile *input, PEInfo *info)
 {
-
-    uint8_t sha256hash[32]; // for the SHA256
-    /* 32 bytes -> 64 hex chars + NUL */
-    char sha256string[65] = {0};
-    uint8_t md5hash[16]; /* 16 bytes -> 32 hex chars + NUL */
-    char md5string[33] = {0};
-
-    FILE *file = fopen(filepath, "rb");
-
-    if (!file)
-    {
-        fprintf(stderr, "Cannot open file: %s\n", filepath);
-        return -1;
-    }
-
-    // calculate the sha256 hash
-    if (calculate_file_sha256(filepath, sha256hash) == 0)
-    {
-        size_t off = 0;
-        for (int i = 0; i < 32; ++i)
-        {
-            int n = snprintf(sha256string + off, sizeof(sha256string) - off, "%02x", sha256hash[i]);
-            if (n <= 0)
-                break;
-            off += (size_t)n;
-            if (off >= sizeof(sha256string) - 1)
-                break;
-        }
-        /* copy into pe_info safely */
-        strncpy(pe_info->sha256hashstring, sha256string, sizeof(pe_info->sha256hashstring) - 1);
-        pe_info->sha256hashstring[sizeof(pe_info->sha256hashstring) - 1] = '\0';
-    }
-
-    // calculate the MD5 hash
-    if (calculate_file_md5(filepath, md5hash) == 0)
-    {
-        size_t off = 0;
-        for (int i = 0; i < 16; ++i)
-        {
-            int n = snprintf(md5string + off, sizeof(md5string) - off, "%02x", md5hash[i]);
-            if (n <= 0)
-                break;
-            off += (size_t)n;
-            if (off >= sizeof(md5string) - 1)
-                break;
-        }
-        /* store the md5 hash string safely */
-        strncpy(pe_info->md5hashstring, md5string, sizeof(pe_info->md5hashstring) - 1);
-        pe_info->md5hashstring[sizeof(pe_info->md5hashstring) - 1] = '\0';
-    }
-
-    // Get file size
-    fseek(file, 0, SEEK_END);
-    pe_info->file_size = ftell(file);
-    rewind(file);
-
-    // Store filename
-    strncpy(pe_info->filename, filepath, sizeof(pe_info->filename) - 1);
-
-    // Read DOS Header
-    DOS_Header dos_header;
-    if (fread(&dos_header, sizeof(DOS_Header), 1, file) != 1)
-    {
-        fprintf(stderr, "Failed to read DOS header\n");
-        fclose(file);
+    unsigned char dos[64], coff[20], optional[112], section[40], signature[4];
+    FILE *file = input->file;
+    memset(info, 0, sizeof(*info));
+    snprintf(info->filename, sizeof(info->filename), "%s", input->path);
+    info->file_size = input->size;
+    strcpy(info->sha256hashstring, input->sha256);
+    strcpy(info->md5hashstring, input->md5);
+    if (read_at(file, 0, dos, sizeof(dos), input->size) != STATUS_SUCCESS ||
+        decode16(dos) != DOS_SIGNATURE) goto invalid;
+    /*
+     * DOS byte offset 60 holds e_lfanew, the file offset of the PE signature.
+     * Use 64-bit arithmetic for later additions even though this field is 32-bit.
+     */
+    uint64_t pe = decode32(dos + 60);
+    if (pe < sizeof(dos) || pe > INT32_MAX ||
+        read_at(file, pe, signature, sizeof(signature), input->size) != STATUS_SUCCESS ||
+        decode32(signature) != PE_SIGNATURE ||
+        read_at(file, pe + 4, coff, sizeof(coff), input->size) != STATUS_SUCCESS)
+        goto invalid;
+    info->machine = decode16(coff);
+    info->number_of_sections = decode16(coff + 2);
+    info->timestamp = decode32(coff + 4);
+    info->characteristics = decode16(coff + 18);
+    uint16_t optional_size = decode16(coff + 16);
+    uint64_t optional_offset = pe + 24;
+    if (optional_size < 2 || !file_range_valid(optional_offset, optional_size, input->size) ||
+        read_at(file, optional_offset, optional, 2, input->size) != STATUS_SUCCESS)
+        goto invalid;
+    info->magic = decode16(optional);
+    if (info->magic != PE32_MAGIC && info->magic != PE32PLUS_MAGIC) {
+        fprintf(stderr, "Unsupported PE optional-header magic: 0x%04X\n", info->magic);
         return STATUS_ERROR;
     }
-
-    // Check DOS signature
-    if (dos_header.e_magic != DOS_SIGNATURE)
-    {
-        fprintf(stderr, "Not a valid DOS executable\n");
-        fclose(file);
-        return STATUS_ERROR;
+    info->is_64bit = info->magic == PE32PLUS_MAGIC;
+    /*
+     * The ternary operator chooses a value: condition ? if_true : if_false.
+     * PE32+ has a wider image base and a different fixed optional-header length;
+     * section RVAs and raw file offsets remain 32-bit in either variant.
+     */
+    size_t fixed = info->is_64bit ? 112 : 96;
+    if (optional_size < fixed ||
+        read_at(file, optional_offset, optional, fixed, input->size) != STATUS_SUCCESS)
+        goto invalid;
+    info->size_of_code = decode32(optional + 4);
+    info->entry_point = decode32(optional + 16);
+    info->image_base = info->is_64bit ? decode64(optional + 24) : decode32(optional + 28);
+    info->number_of_rva_directories = decode32(optional + fixed - 4);
+    if (info->number_of_rva_directories > 16 ||
+        info->number_of_rva_directories > (optional_size - fixed) / 8) goto invalid;
+    info->size_of_headers = decode32(optional + 60);
+    unsigned char directory[8];
+    for (unsigned i = 0; i < info->number_of_rva_directories; ++i) {
+        if (read_at(file, optional_offset + fixed + i * 8, directory, 8, input->size) != STATUS_SUCCESS)
+            goto invalid;
+        info->directories[i].VirtualAddress = decode32(directory);
+        info->directories[i].Size = decode32(directory + 4);
     }
-
-    // Seek to PE header
-    // printf ("Seeking to the PE header\n");
-    fseek(file, dos_header.e_lfanew, SEEK_SET);
-
-    // Read PE Signature
-    // printf ("Reading PE signature\n");
-    uint16_t pe_signature;
-    if (fread(&pe_signature, sizeof(uint16_t), 1, file) != 1) // this is the root cause of a file missalignment
-                                                              //  PE signature is 4 bytes not 2
-    {
-        fprintf(stderr, "Failed to read PE signature\n");
-        fclose(file);
-        return 0;
+    /*
+     * The declared optional-header size may include extra padding. Skip all of
+     * it to locate the section table, rather than assuming a C struct's size.
+     */
+    uint64_t sections = optional_offset + optional_size;
+    info->section_table_offset = sections;
+    if (!file_range_valid(sections, (uint64_t)info->number_of_sections * 40, input->size))
+        goto invalid;
+    for (unsigned i = 0; i < info->number_of_sections; ++i) {
+        if (read_at(file, sections + (uint64_t)i * 40, section, sizeof(section), input->size) != STATUS_SUCCESS)
+            goto invalid;
+        uint32_t raw_size = decode32(section + 16), raw_offset = decode32(section + 20);
+        if (raw_size && !file_range_valid(raw_offset, raw_size, input->size)) goto invalid;
+        if (reserve_array((void **)&info->sections, &info->section_capacity, i + 1, sizeof(*info->sections)) != STATUS_SUCCESS)
+            goto invalid;
+        memset(&info->sections[i], 0, sizeof(info->sections[i]));
+        /*
+         * Disk names occupy exactly eight bytes and need not end in zero.
+         * The destination has nine bytes and was zeroed above, supplying a terminator.
+         */
+        memcpy(info->sections[i].name, section, 8);
+        info->sections[i].virtual_size = decode32(section + 8);
+        info->sections[i].virtual_address = decode32(section + 12);
+        info->sections[i].raw_size = raw_size;
+        info->sections[i].PointerToRawData = raw_offset;
+        info->sections[i].characteristics = decode32(section + 36);
+        info->section_count++;
     }
-
-    // Verify PE Signature
-    // printf ("Verifying Signature\n");
-    if (pe_signature != PE_SIGNATURE)
-    {
-        fprintf(stderr, "Invalid PE signature\n");
-        fclose(file);
-        return 0;
-    }
-    // move past the \0\0 of the PE signature
-    // printf ("Advancing two bytes\n");
-    fseek(file, 2, SEEK_CUR);
-
-    // Read COFF Header
-    // printf ("Reading COFF header\n");
-    COFF_Header coff_header;
-    if (fread(&coff_header, sizeof(COFF_Header), 1, file) != 1)
-    {
-        fprintf(stderr, "Failed to read COFF header\n");
-        fclose(file);
-        return 0;
-    }
-
-    // Store COFF Header information
-    pe_info->machine = coff_header.Machine;
-    pe_info->timestamp = coff_header.TimeDateStamp;
-    pe_info->number_of_sections = coff_header.NumberOfSections;
-    pe_info->characteristics = coff_header.Characteristics;
-
-    // printf ("Optional Header Size %x\n", coff_header.SizeOfOptionalHeader);
-    //  Determine if 32-bit or 64-bit
-    uint16_t optional_magic;
-    if (fread(&optional_magic, sizeof(uint16_t), 1, file) != 1)
-    {
-        fprintf(stderr, "Failed to read Optional header magic\n");
-        fclose(file);
-        return 0;
-    }
-
-    // Seek back to read full optional header
-    fseek(file, -sizeof(uint16_t), SEEK_CUR);
-
-    // Store magic and bit-ness
-    pe_info->magic = optional_magic;
-    pe_info->is_64bit = (optional_magic == PE32PLUS_MAGIC);
-
-    // Read appropriate optional header based on architecture
-    if (!pe_info->is_64bit)
-    {
-        // 32-bit
-        Optional_Header32 optional_header;
-        if (fread(&optional_header, sizeof(Optional_Header32), 1, file) != 1)
-        {
-            fprintf(stderr, "Failed to read 32-bit Optional header\n");
-            fclose(file);
-            return 0;
-        }
-
-        pe_info->size_of_code = optional_header.SizeOfCode;
-        pe_info->entry_point = optional_header.AddressOfEntryPoint;
-        pe_info->image_base = optional_header.ImageBase;
-        // printf ("RVA number %d\n",optional_header.NumberOfRVAAndSizes);
-        pe_info->number_of_rva_directories = optional_header.NumberOfRVAAndSizes;
-    }
-    else
-    {
-        // 64-bit
-        Optional_Header64 optional_header;
-        if (fread(&optional_header, sizeof(Optional_Header64), 1, file) != 1)
-        {
-            fprintf(stderr, "Failed to read 64-bit Optional header\n");
-            fclose(file);
-            return 0;
-        }
-
-        pe_info->size_of_code = optional_header.SizeOfCode;
-        pe_info->entry_point = optional_header.AddressOfEntryPoint;
-        pe_info->image_base = optional_header.ImageBase;
-        // printf ("RVA number %d\n",optional_header.NumberOfRVAAndSizes);
-        pe_info->number_of_rva_directories = optional_header.NumberOfRVAAndSizes;
-    }
-
-    // TODO -----------------------------------
-    //  add code for accessing the RVA directory
-    RVA_Directories rva_dirs;
-    fread(&rva_dirs, sizeof(RVA_Data_Directory) * pe_info->number_of_rva_directories, 1, file);
-
-    // TODO -----------------------------------
-
-    // Parse Sections
-    pe_info->section_count = 0;
-    for (int i = 0; i < pe_info->number_of_sections && i < 16; i++)
-    {
-        Section_Header section_header;
-        if (fread(&section_header, sizeof(Section_Header), 1, file) != 1)
-        {
-            fprintf(stderr, "Failed to read section header\n");
-            fclose(file);
-            return 0;
-        }
-
-        // Store section info
-        strncpy(pe_info->sections[i].name,
-                section_header.Name,
-                8);
-        pe_info->sections[i].name[8] = '\0';
-
-        pe_info->sections[i].virtual_size = section_header.VirtualSize;
-        pe_info->sections[i].virtual_address = section_header.VirtualAddress;
-        pe_info->sections[i].PointerToRawData = section_header.PointerToRawData;
-        pe_info->sections[i].raw_size = section_header.SizeOfRawData;
-        pe_info->sections[i].characteristics = section_header.Characteristics;
-
-        pe_info->section_count++;
-    }
-
-    fclose(file); // end of header information, section data is after this
-    return 1;
+    if (parse_pe_details(input, info) != STATUS_SUCCESS) goto invalid;
+    return STATUS_SUCCESS;
+invalid:
+    free_pe_info(info);
+    fprintf(stderr, "Invalid or truncated PE headers or section data\n");
+    return STATUS_ERROR;
 }
 
-// Print PE file information
-void print_pe_info(const PEInfo *pe_info)
+/*
+ * Print the older, expanded field listing used by an unfiltered --verbose report.
+ * The compact/default rendering is in report.c. gmtime formats timestamps in UTC;
+ * if the platform cannot represent the date, retain the numeric timestamp.
+ */
+void print_pe_info(const PEInfo *pe_info, int previews)
 {
     printf("PE File Analysis Report\n");
     printf("=====================\n");
@@ -236,15 +131,23 @@ void print_pe_info(const PEInfo *pe_info)
     printf("  Machine: 0x%04X (%s)\n", pe_info->machine,
            pe_info->machine == IMAGE_FILE_MACHINE_I386 ? "x86" : pe_info->machine == IMAGE_FILE_MACHINE_AMD64 ? "x64"
                                                                                                               : "Unknown");
-    printf("  Timestamp: %u\n", pe_info->timestamp); // TODO convert this into a human readable time format
+    time_t stamp = (time_t)pe_info->timestamp;
+    struct tm *utc = gmtime(&stamp);
+    char date[32];
+    if (utc && strftime(date, sizeof(date), "%Y-%m-%d %H:%M:%S UTC", utc))
+        printf("  Timestamp: %u (%s)\n", pe_info->timestamp, date);
+    else printf("  Timestamp: %u\n", pe_info->timestamp);
     printf("  Number of Sections: %d\n", pe_info->number_of_sections);
-    printf("  Characteristics: 0x%04X\n", pe_info->characteristics);
+    printf("  Characteristics: 0x%04X (%s%s%s)\n", pe_info->characteristics,
+           pe_info->characteristics & 0x2 ? "executable " : "",
+           pe_info->characteristics & 0x2000 ? "DLL " : "",
+           pe_info->characteristics & 0x100 ? "32-bit-machine" : "");
 
     printf("\nOptional Header:\n");
     printf("  Magic: 0x%04X\n", pe_info->magic);
     printf("  Size of Code: %u\n", pe_info->size_of_code);
-    printf("  Entry Point: 0x%08X\n", pe_info->entry_point);
-    printf("  Image Base: 0x%08llX\n", pe_info->image_base);
+    printf("  Entry Point: 0x%08X (RVA)\n", pe_info->entry_point);
+    printf("  Image Base: 0x%0*llX (VA)\n", pe_info->is_64bit ? 16 : 8, (unsigned long long)pe_info->image_base);
 
     printf("\nSections:\n");
     for (int i = 0; i < pe_info->section_count; i++)
@@ -252,25 +155,28 @@ void print_pe_info(const PEInfo *pe_info)
         printf("  Section %d:\n", i + 1);
         printf("    Name: %s\n", pe_info->sections[i].name);
         printf("    Virtual Size: %u\n", pe_info->sections[i].virtual_size);
-        printf("    Virtual Address: 0x%08X\n", pe_info->sections[i].virtual_address);
+        printf("    Virtual Address: 0x%08X (RVA)\n", pe_info->sections[i].virtual_address);
         printf("    Pointer to raw data: 0x%08X\n", pe_info->sections[i].PointerToRawData);
         printf("    Raw Size: %u\n", pe_info->sections[i].raw_size);
-        printf("    Entropy: %f\n", pe_info->sections[i].entropy);
-        printf("    Characteristics: 0x%08X\n", pe_info->sections[i].characteristics); // TODO -make this human readable
+        if (!pe_info->sections[i].raw_size) puts("    Entropy: N/A (no file bytes)");
+        else printf("    Entropy: %f bits/byte (raw file bytes, including padding)\n", pe_info->sections[i].entropy);
+        printf("    Declared permissions: ");
+        print_permissions(pe_info->sections[i].characteristics, 0x40000000, 0x80000000, 0x20000000);
+        printf("\n");
+        printf("    Characteristics: 0x%08X\n", pe_info->sections[i].characteristics);
     }
+    print_pe_details(pe_info, previews);
 }
 
-// int main(int argc, char *argv[]) {
-//     if (argc < 2) {
-//         fprintf(stderr, "Usage: %s <executable_path>\n", argv[0]);
-//         return 1;
-//     }
-
-//     PEInfo pe_info = {0};
-
-//     if (parse_pe_file(argv[1], &pe_info)) {
-//         print_pe_info(&pe_info);
-//     }
-
-//     return 0;
-// }
+/*
+ * Release the arrays owned by PEInfo, not the PEInfo object itself.
+ * free(NULL) is allowed. Clearing pointers and counts makes repeated cleanup safe;
+ * the InputFile stream remains the caller's responsibility.
+ */
+void free_pe_info(PEInfo *info)
+{
+    free(info->sections); free(info->imports); free(info->exports); free(info->resources);
+    info->sections = NULL; info->imports = NULL; info->exports = NULL; info->resources = NULL;
+    info->section_count = 0; info->import_count = info->export_count = info->resource_count = 0;
+    info->section_capacity = info->import_capacity = info->export_capacity = info->resource_capacity = 0;
+}

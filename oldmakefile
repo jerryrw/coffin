@@ -1,3 +1,8 @@
+# Historical build recipe retained as a reference; normal `make` uses Makefile.
+# This predates automatic header dependencies, separate sanitizer builds, and
+# current tests. Do not use its broad clean recipe for normal development.
+# The active Makefile documents the supported build procedure.
+
 TARGET = bin/coffin
 SRC = $(wildcard src/*.c)
 OBJ = $(patsubst src/%.c, obj/%.o, $(SRC))

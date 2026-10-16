@@ -1,3 +1,8 @@
+# Historical repository-setup notes, not an application script or build step.
+# Commands below initialize a repository and publish commits; substitute your
+# own remote URL and understand each action before using these notes.
+# Everyday source reading, building, and testing do not require running them.
+
 
 #How to init a github repository
 

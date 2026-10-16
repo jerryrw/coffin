@@ -1,3 +1,12 @@
+/*
+ * Windows PE vocabulary, parsed results, and parser/resource APIs.
+ * A typedef gives a struct a convenient name; the struct groups related fields.
+ * The layout-shaped types below document the format but are NOT read directly
+ * from disk: compiler padding and host byte order could differ. Parsing decodes
+ * fixed byte offsets into normalized results instead. RVA means image-relative
+ * virtual address; raw offsets refer to disk. Result arrays belong to PEInfo.
+ */
+
 // https://stackoverflow.com/questions/76815878/understanding-sizeofheaders
 // https://0xrick.github.io/win-internals/pe4/
 // https://learn.microsoft.com/en-us/windows/win32/debug/pe-format
@@ -8,7 +17,8 @@
 #ifndef PEPARSER_H
 #define PEPARSER_H
 
-#include <stdint.h> // for the uintXX_t definitions
+#include <stdint.h>
+#include "common.h" // Shared InputFile and STATUS_* definitions
 
 // PE File Constants
 #define PE_SIGNATURE 0x4550  // "PE\0\0"
@@ -22,6 +32,10 @@
 #define PE32_MAGIC 0x010B
 #define PE32PLUS_MAGIC 0x020B
 
+/*
+ * DOS compatibility fields describe the old executable stub. The PE parser
+ * uses e_magic and e_lfanew; it does not run the DOS program.
+ */
 // Structure definitions to match PE file structure
 typedef struct
 {
@@ -57,6 +71,10 @@ typedef struct
     uint16_t Characteristics;
 } COFF_Header;
 
+/*
+ * Each directory advertises a location and byte size. Most locations are RVAs;
+ * the certificate-table convention is a file offset and is not decoded here.
+ */
 // for the RVA data array
 typedef struct
 {
@@ -85,6 +103,10 @@ typedef struct
     RVA_Data_Directory Reserved; // must be 0
 } RVA_Directories;
 
+/*
+ * The "optional header" is historical terminology: executable images need it.
+ * PE32 and PE32+ have different field widths and omit BaseOfData in PE32+.
+ */
 // Optional Header for 32-bit
 typedef struct
 {
@@ -160,6 +182,9 @@ typedef struct
 
 typedef struct
 {
+    /*
+     * This on-disk name may fill all eight bytes without a string terminator.
+     */
     char Name[8];
     uint32_t VirtualSize;
     uint32_t VirtualAddress;
@@ -171,6 +196,55 @@ typedef struct
     uint16_t NumberOfLinenumbers;
     uint32_t Characteristics;
 } Section_Header;
+
+typedef struct {
+    /*
+     * Bounded, terminal-escaped display strings. by_ordinal selects ordinal instead
+     * of name; hint is only a name-lookup hint. delay_load records descriptor kind.
+     */
+    char dll[256], name[256];
+    uint16_t ordinal, hint;
+    int by_ordinal, delay_load;
+} PEImport;
+
+typedef struct {
+    /*
+     * An export may have no name, or forward to a DLL!symbol instead of local code.
+     * Several names can alias one ordinal; ordinal is widened to avoid base+index wrap.
+     */
+    char name[256], forwarder[256];
+    uint64_t ordinal;
+    uint32_t rva;
+} PEExport;
+
+typedef struct {
+    /*
+     * Display path and preview are bounded strings; file_offset/size locate the
+     * original payload. IDs retain numeric type/name/language for image resolution.
+     */
+    char path[768];
+    uint32_t rva, size, codepage, type_id, name_id, language_id;
+    char decoded[2048];
+    uint64_t file_offset;
+} PEResource;
+
+typedef struct
+{
+    char name[9]; // 8 chars + null terminator
+    /*
+     * Memory bytes and raw file bytes are different extents. virtual_address is
+     * an RVA; PointerToRawData is an absolute disk offset.
+     */
+    uint32_t virtual_size;
+    uint32_t virtual_address;
+    uint32_t PointerToRawData;
+    uint32_t raw_size;
+    uint32_t characteristics;
+    /*
+     * Raw-byte entropy in bits/byte; NAN marks a section with no measured bytes.
+     */
+    double entropy;
+} PESection;
 
 // Comprehensive PE File Information Structure
 // this is where the data to be printed lives
@@ -196,21 +270,44 @@ typedef struct
     uint32_t entry_point;
     uint64_t image_base;
     uint32_t number_of_rva_directories;
-    // Sections
-    struct
-    {
-        char name[9]; // 8 chars + null terminator
-        uint32_t virtual_size;
-        uint32_t virtual_address;
-        uint32_t PointerToRawData;
-        uint32_t raw_size;
-        uint32_t characteristics;
-        double entropy;
-    } sections[16]; // Assuming max 16 sections
+    /*
+     * Owned heap arrays: count is initialized entries; capacity is allocated slots.
+     * reserve_array can grow storage, so callers must not keep pointers across growth.
+     */
+    PESection *sections;
+    unsigned section_capacity;
     int section_count;
+    uint64_t section_table_offset;
+    uint32_t size_of_headers;
+    RVA_Data_Directory directories[16];
+    PEImport *imports;
+    PEExport *exports;
+    PEResource *resources;
+    unsigned import_capacity, export_capacity, resource_capacity;
+    unsigned import_count, export_count, resource_count;
+    unsigned import_total, export_total, resource_total, delay_import_count;
+    char export_dll[256];
 } PEInfo;
 
-int parse_pe_file(const char *filepath, PEInfo *pe_info);
-void print_pe_info(const PEInfo *pe_info);
+/*
+ * On reconstruction success, the caller owns *data and must free it. On error
+ * outputs are NULL/zero. decode_resource_payload writes only a bounded preview.
+ */
+int reconstruct_resource_image(const InputFile *input, const PEInfo *info, unsigned index, unsigned char **data, size_t *size);
+int decode_resource_payload(const InputFile *input, PEResource *resource);
+/*
+ * Collect returns an owned copy; extraction writes to a new private directory.
+ */
+int collect_pe_resources(const InputFile *input, const PEInfo *info, PEResource **resources);
+int extract_pe_resources(const InputFile *input, const PEInfo *info, const char *directory);
+/*
+ * Free owned arrays, not info or the borrowed input. Parse initializes info
+ * and leaves it safe to free even when parsing fails.
+ */
+void free_pe_info(PEInfo *info);
+int parse_pe_file(const InputFile *input, PEInfo *pe_info);
+int parse_pe_details(const InputFile *input, PEInfo *info);
+void print_pe_details(const PEInfo *info, int previews);
+void print_pe_info(const PEInfo *pe_info, int previews);
 
 #endif
