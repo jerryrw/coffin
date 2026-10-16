@@ -1,11 +1,15 @@
-# Compiled source #
-###################
+# Compiler and linker outputs
+# Keep intentional executable fixtures through the explicit exceptions below.
 *.com
 *.class
 *.dll
-#*.exe
+*.exe
 *.o
+*.d
+*.a
+*.lib
 *.so
+*.dylib
 
 # Packages #
 ############
@@ -38,5 +42,17 @@ Thumbs.db
 
 # Directories #
 ###############
+# Ignore generated executables, logs/corpora, objects, and dependency files.
+# Known-source root fixtures stay versioned so tests need no cross-compiler.
 bin/
 obj/
+
+# Python test helpers
+__pycache__/
+*.py[cod]
+
+# Intentional root-level PE test fixtures. Other generated .exe files stay ignored.
+# Extensionless ELF/Mach-O fixtures are already visible without an exception.
+!/testexecutable.exe
+!/hello-pe32.exe
+!/hello-pe64.exe
