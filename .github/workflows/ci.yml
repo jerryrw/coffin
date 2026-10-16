@@ -1,0 +1,44 @@
+# GitHub Actions runs this workflow on pushes and pull requests.
+# Each matrix OS gets its own checkout and executes the same verification steps.
+# This file orchestrates commands; the Makefile defines the actual build rules.
+name: Build and test
+on: [push, pull_request]
+# Read-only repository access is enough for building/testing; no publishing step.
+permissions:
+  contents: read
+jobs:
+  test:
+    # Expand this job into one Linux run and one macOS run to catch host differences.
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      # Linux rebuilds ELF/PE fixtures. QEMU runs the ARM samples when not native.
+      - if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld llvm qemu-user
+          make samples SAMPLE_ARGS='--llvm-bin /usr/bin --lld-bin /usr/bin --formats elf pe'
+      # macOS provides the SDK/linker/lipo needed to rebuild thin and universal Mach-O.
+      - if: runner.os == 'macOS'
+        run: make samples SAMPLE_ARGS='--formats mach'
+      # Run unit and CLI tests, then rebuild under sanitizers and mutate sample inputs.
+      - run: make CC=clang test
+      - run: make CC=clang sanitize
+      - run: make CC=clang fuzz-smoke
+      - if: runner.os == 'Linux'
+        run: |
+          make FUZZ_CC=clang fuzz
+          python3 tests/run_fuzz.py bin/fuzz/coffin-fuzz --runs 10000
+      # Retain fuzz diagnostics only after a failure so a developer can reproduce it.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: fuzz-diagnostics-${{ matrix.os }}
+          path: bin/fuzz/
+          if-no-files-found: ignore

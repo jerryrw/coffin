@@ -1,0 +1,51 @@
+{
+  "source": "hello.c",
+  "source_sha256": "ea611295d40840aa825d17896cad26d45b07a8b8792c1a4c2209f734515d1cf5",
+  "samples": [
+    {
+      "file": "hello-elf32",
+      "size": 728,
+      "sha256": "75d89451476b66e5c80805fed088c194488c5af0c754cc383c79859e38ceb831"
+    },
+    {
+      "file": "hello-elf64",
+      "size": 1048,
+      "sha256": "c1766e844497c594072110bcdde8523dce6be11df32606f9ab58e81e433fdc14"
+    },
+    {
+      "file": "hello-linux-arm32",
+      "size": 952,
+      "sha256": "9790ff878561851af8fcbc178ac1d5e7b364a079f977b520783aff8bd03f67b5"
+    },
+    {
+      "file": "hello-linux-arm64",
+      "size": 1112,
+      "sha256": "40c48c41a2160405a69801c4736079040be920b71aa52fd47d2a86b66afc0eaf"
+    },
+    {
+      "file": "hello-mach-arm64",
+      "size": 49968,
+      "sha256": "23b9b4e0247373ba8d2e4f54fefd7594364f592312f75368eb88cb76d6bc5c22"
+    },
+    {
+      "file": "hello-mach-universal",
+      "size": 82736,
+      "sha256": "d93fed872c3d53a6effe2c5593df78704c59baff06532b334e9b3e0b994d2e04"
+    },
+    {
+      "file": "hello-mach-x86_64",
+      "size": 12560,
+      "sha256": "e88c4d3173000670c35af6b8822fa04ecb1fdb2bd4cbb231f8c37d5ee1fd2ad9"
+    },
+    {
+      "file": "hello-pe32.exe",
+      "size": 2560,
+      "sha256": "6a38cd4e6708a7853c4b9a893c6171781919f10c1f726775dd4f4026bad9e2e7"
+    },
+    {
+      "file": "hello-pe64.exe",
+      "size": 2048,
+      "sha256": "0b88e431d310c42b9102a2c6ac9dba7cff8b5a338187089328cd4eeeae6a4b2c"
+    }
+  ]
+}

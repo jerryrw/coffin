@@ -1,3 +1,11 @@
+/*
+ * Streaming MD5 implementation: init -> any number of updates -> final.
+ * MD5 works on 64-byte blocks, with four 32-bit state words and a 64-bit bit count.
+ * All arithmetic state is unsigned so addition wraps modulo 2^32 as required.
+ * Bytes are explicitly decoded and encoded little-endian, independent of the host.
+ * The program uses this digest as a file identifier; the API is in md5.h.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -5,6 +13,12 @@
 #include "md5.h"
 
 // Bit manipulation macros
+/*
+ * F/G/H/I are the round-specific Boolean mixing functions. Bitwise &, |,
+ * ^ and ~ operate on each bit independently, not on true/false values.
+ * ROTL wraps high bits around instead of discarding them like a plain shift.
+ * All uses below have fixed rotation distances strictly between 0 and 32.
+ */
 #define F(x, y, z) (((x) & (y)) | ((~x) & (z)))
 #define G(x, y, z) (((x) & (z)) | ((y) & (~z)))
 #define H(x, y, z) ((x) ^ (y) ^ (z))
@@ -43,6 +57,11 @@
     }
 
 // Initialize MD5 context
+/*
+ * Start a new digest with the four algorithm-defined initial state words.
+ * count tracks total input bits modulo 2^64. The buffer need not be initialized:
+ * update/final fill each byte that a compression block will consume.
+ */
 void md5_init(MD5_CTX *context)
 {
     context->count = 0;
@@ -53,8 +72,15 @@ void md5_init(MD5_CTX *context)
 }
 
 // Update context with more data
+/*
+ * Accept a caller-owned byte span without taking ownership of it.
+ * Complete any partial block, transform full blocks directly, and retain the tail.
+ * The bit count also determines the buffered-byte index modulo 64. Zero-length
+ * updates return before touching input, so input may be NULL in that case.
+ */
 void md5_update(MD5_CTX *context, const uint8_t *input, size_t input_len)
 {
+    if (!input_len) return;
     size_t i, index, part_len;
 
     // Compute number of bytes mod 64
@@ -86,6 +112,12 @@ void md5_update(MD5_CTX *context, const uint8_t *input, size_t input_len)
 }
 
 // Finalize MD5 hash
+/*
+ * Append 0x80, enough zero bytes to reach byte 56 of a block, and the ORIGINAL
+ * 64-bit input length. Save count before padding because update changes it.
+ * When fewer than eight bytes remain, padding deliberately uses a second block.
+ * Encode the four final words as 16 little-endian digest bytes.
+ */
 void md5_final(MD5_CTX *context, uint8_t digest[16])
 {
     uint8_t bits[8];
@@ -129,6 +161,12 @@ void md5_final(MD5_CTX *context, uint8_t digest[16])
 }
 
 // Core MD5 transformation
+/*
+ * Compress exactly one 64-byte block; do not change the input-length counter.
+ * The 64 unrolled steps mix message words into local state using different
+ * Boolean functions, rotation distances, and fixed constants. Adding local
+ * results back into the running state chains this block to all preceding blocks.
+ */
 void md5_transform(MD5_CTX *context, const uint8_t block[64])
 {
     uint32_t a = context->state[0];
@@ -146,7 +184,13 @@ void md5_transform(MD5_CTX *context, const uint8_t block[64])
                (((uint32_t)block[i * 4 + 3]) << 24);
     }
 
-    // Round 1
+    /*
+ * Each FF/GG/HH/II macro performs one mixing step on four working words.
+ * Changing the argument order rotates their roles between consecutive steps.
+ * These hexadecimal constants and word orders are algorithm data, not offsets;
+ * changing even one changes the digest. Preserve the exact round schedule.
+ */
+// Round 1
     FF(a, b, c, d, x[0], 7, 0xd76aa478);
     FF(d, a, b, c, x[1], 12, 0xe8c7b756);
     FF(c, d, a, b, x[2], 17, 0x242070db);
@@ -224,63 +268,3 @@ void md5_transform(MD5_CTX *context, const uint8_t block[64])
     context->state[2] += c;
     context->state[3] += d;
 }
-
-// Calculate MD5 hash of a file
-int calculate_file_md5(const char *filepath, uint8_t *hash)
-{
-    FILE *file;
-    MD5_CTX ctx;
-    uint8_t buffer[4096];
-    size_t bytes_read;
-
-    // Open file
-    file = fopen(filepath, "rb");
-    if (!file)
-    {
-        perror("Error opening file");
-        return -1;
-    }
-
-    // Initialize MD5 context
-    md5_init(&ctx);
-
-    // Read and process file in chunks
-    while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0)
-    {
-        md5_update(&ctx, buffer, bytes_read);
-    }
-
-    // Check for file read errors
-    if (ferror(file))
-    {
-        perror("Error reading file");
-        fclose(file);
-        return -1;
-    }
-
-    // Finalize hash
-    md5_final(&ctx, hash);
-
-    // Close file
-    fclose(file);
-
-    return 0;
-}
-
-// int main()
-// {
-//     const char *filepath = "example.txt";
-//     uint8_t hash[16]; // 128 bits = 16 bytes
-
-//     if (calculate_file_md5(filepath, hash) == 0)
-//     {
-//         printf("MD5 Hash: ");
-//         for (int i = 0; i < 16; ++i)
-//         {
-//             printf("%02x", hash[i]);
-//         }
-//         printf("\n");
-//     }
-
-//     return 0;
-// }
