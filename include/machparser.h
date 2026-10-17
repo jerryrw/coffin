@@ -11,6 +11,7 @@
 
 #include <stdint.h>
 #include "common.h"
+#include "linkage.h"
 
 #define MACHO_MAGIC 0xfeedface
 #define MACHO_MAGIC_64 0xfeedfacf
@@ -57,9 +58,9 @@ typedef struct
     uint32_t cmd;
     uint32_t cmdsize;
     /*
-     * Raw segment names can occupy all 16 bytes; print with a bounded %.16s.
+     * Disk names occupy 16 bytes; escaped display storage allows four chars per byte.
      */
-    char segname[16];
+    char segname[65];
     uint32_t vmaddr;
     uint32_t vmsize;
     uint32_t fileoff;
@@ -79,7 +80,7 @@ typedef struct
 {
     uint32_t cmd;
     uint32_t cmdsize;
-    char segname[16];
+    char segname[65];
     uint64_t vmaddr;
     uint64_t vmsize;
     uint64_t fileoff;
@@ -92,9 +93,9 @@ typedef struct
 
 typedef struct {
     /*
-     * Normalized names have one extra byte for a guaranteed C string terminator.
+     * Normalized names allow escaped bytes and a guaranteed C string terminator.
      */
-    char name[17], segment[17];
+    char name[65], segment[65];
     uint64_t address, size;
     uint32_t offset, alignment, flags, relocation_offset, relocation_count, protection;
     /*
@@ -121,6 +122,12 @@ typedef struct
 // Mach-O Info structure
 typedef struct MachOInfo
 {
+    /* These arrays are owned by the result and released by free_*_info.
+     * ELF symbols include static/dynamic tables; Mach-O uses LC_SYMTAB. */
+    Dependency *dependencies;
+    BinarySymbol *symbols;
+    unsigned dependency_count, dependency_capacity, symbol_count, symbol_capacity;
+    int symbols_unavailable;
     char filename[256];
     size_t file_size;
     char sha256hashstring[65];
@@ -159,6 +166,7 @@ typedef struct MachOInfo
  * These functions borrow the open InputFile; they do not close it.
  */
 // Function declarations
+int parse_mach_details(const InputFile *input, MachOInfo *info);
 int parse_mach_file(const InputFile *input, MachOInfo *mach_info);
 void free_mach_info(MachOInfo *info);
 void print_mach_info(const MachOInfo *mach_info);

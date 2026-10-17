@@ -22,6 +22,8 @@
 #define REPORT_PROGRAMS 32u
 #define REPORT_COMMANDS 64u
 #define REPORT_OBSERVATIONS 128u
+#define REPORT_DEPENDENCIES 256u
+#define REPORT_SYMBOLS 512u
 
 typedef struct {
     /*
@@ -42,6 +44,7 @@ typedef struct {
  * Validate selected groups against the format's supported mask before parsing.
  * The rendering calls expect successfully parsed results and entropy.
  */
+int report_needs_section_entropy(const ReportOptions *options, int pe);
 int report_validate(const ReportOptions *options, unsigned supported);
 void report_pe(const InputFile *input, const PEInfo *info, const ReportOptions *options);
 void report_elf(const InputFile *input, const ELFInfo *info, const ReportOptions *options);

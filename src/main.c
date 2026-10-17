@@ -23,6 +23,10 @@
  * Return EXIT_SUCCESS for a completed report and EXIT_FAILURE for any error.
  * Each format-specific result owns heap arrays and is freed even after a failure.
  */
+#ifndef COFFIN_VERSION
+#define COFFIN_VERSION "development"
+#endif
+
 int main(int argc, char *argv[])
 {
     InputFile input = {0};
@@ -47,6 +51,8 @@ int main(int argc, char *argv[])
         else if (!strcmp(argv[i], "--no-preview")) report.no_preview = 1;
         else if (!strcmp(argv[i], "--headers")) report.selected |= REPORT_HEADERS;
         else if (!strcmp(argv[i], "--sections")) report.selected |= REPORT_SECTIONS;
+        else if (!strcmp(argv[i], "--dependencies")) report.selected |= REPORT_DEPENDENCIES;
+        else if (!strcmp(argv[i], "--symbols")) report.selected |= REPORT_SYMBOLS;
         else if (!strcmp(argv[i], "--imports")) report.selected |= REPORT_IMPORTS;
         else if (!strcmp(argv[i], "--exports")) report.selected |= REPORT_EXPORTS;
         else if (!strcmp(argv[i], "--resources")) report.selected |= REPORT_RESOURCES;
@@ -64,6 +70,7 @@ int main(int argc, char *argv[])
             if (extract_directory || ++i >= argc) { print_usage(argv); return EXIT_FAILURE; }
             extract_directory = argv[i];
         }
+        else if (!strcmp(argv[i], "--version")) { printf("coffin %s\n", COFFIN_VERSION); return EXIT_SUCCESS; }
         else if (!strcmp(argv[i], "--help")) { print_usage(argv); return EXIT_SUCCESS; }
         else if (!strcmp(argv[i], "--")) {
             if (++i != argc - 1 || input.path) { print_usage(argv); return EXIT_FAILURE; }
@@ -78,7 +85,7 @@ int main(int argc, char *argv[])
      * This one stream is reused by hashing, parsers, entropy, and extraction.
      */
     input.file = fopen(input.path, "rb");
-    if (!input.file) { perror(input.path); return EXIT_FAILURE; }
+    if (!input.file) { print_path_error("Cannot open input", input.path); return EXIT_FAILURE; }
     int status = STATUS_ERROR;
     unsigned char magic[4];
     if (input_prepare(&input) != STATUS_SUCCESS ||
@@ -93,11 +100,11 @@ int main(int argc, char *argv[])
      */
     if (memcmp(magic, "\177ELF", 4) == 0) {
         if (extract_directory) { fprintf(stderr, "Resource extraction requires a PE file\n"); goto done; }
-        if (report_validate(&report, REPORT_HEADERS | REPORT_SECTIONS | REPORT_PROGRAMS | REPORT_OBSERVATIONS) != STATUS_SUCCESS) goto done;
+        if (report_validate(&report, REPORT_HEADERS | REPORT_SECTIONS | REPORT_PROGRAMS | REPORT_OBSERVATIONS | REPORT_DEPENDENCIES | REPORT_SYMBOLS) != STATUS_SUCCESS) goto done;
         ELFInfo info;
         status = parse_elf_file(&input, &info);
         if (status == STATUS_SUCCESS) status = entropy_file(&input, &entropy);
-        if (status == STATUS_SUCCESS) status = entropy_elf(&input, &entropy, &info);
+        if (status == STATUS_SUCCESS && report_needs_section_entropy(&report, 0)) status = entropy_elf(&input, &entropy, &info);
         if (status == STATUS_SUCCESS) report_elf(&input, &info, &report);
         free_elf_info(&info);
     } else if (magic[0] == 'M' && magic[1] == 'Z') {
@@ -105,12 +112,12 @@ int main(int argc, char *argv[])
         PEInfo info;
         status = parse_pe_file(&input, &info);
         if (status == STATUS_SUCCESS) status = entropy_file(&input, &entropy);
-        if (status == STATUS_SUCCESS) status = entropy_pe(&input, &entropy, &info);
+        if (status == STATUS_SUCCESS && report_needs_section_entropy(&report, 1)) status = entropy_pe(&input, &entropy, &info);
         if (status == STATUS_SUCCESS && extract_directory)
             status = extract_pe_resources(&input, &info, extract_directory);
         if (status == STATUS_SUCCESS) {
             report_pe(&input, &info, &report);
-            if (extract_directory) printf("\nExtracted %u resources to %s (see index.tsv)\n", info.resource_total, extract_directory);
+            if (extract_directory) { printf("\nExtracted %u resources to ", info.resource_total); print_escaped(stdout, extract_directory); puts(" (see index.tsv)"); }
         }
         free_pe_info(&info);
     } else {
@@ -120,11 +127,11 @@ int main(int argc, char *argv[])
             value == 0xcefaedfe || value == 0xcffaedfe ||
             value == 0xbebafeca || value == 0xcafebabe ||
             value == 0xbfbafeca || value == 0xcafebabf) {
-            if (report_validate(&report, REPORT_HEADERS | REPORT_SECTIONS | REPORT_COMMANDS | REPORT_OBSERVATIONS) != STATUS_SUCCESS) goto done;
+            if (report_validate(&report, REPORT_HEADERS | REPORT_SECTIONS | REPORT_COMMANDS | REPORT_OBSERVATIONS | REPORT_DEPENDENCIES | REPORT_SYMBOLS) != STATUS_SUCCESS) goto done;
             MachOInfo info;
             status = parse_mach_file(&input, &info);
             if (status == STATUS_SUCCESS) status = entropy_file(&input, &entropy);
-            if (status == STATUS_SUCCESS) status = entropy_mach(&input, &entropy, &info);
+            if (status == STATUS_SUCCESS && report_needs_section_entropy(&report, 0)) status = entropy_mach(&input, &entropy, &info);
             if (status == STATUS_SUCCESS) report_mach(&input, &info, &report);
             free_mach_info(&info);
         } else fprintf(stderr, "Unknown file type\n");

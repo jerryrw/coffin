@@ -7,6 +7,7 @@
 
 """Small synthetic executable images with known directory and section contents."""
 import struct
+from linkage_fixtures import elf_linkage, mach_linkage
 
 
 # Build one file-backed PE section with imports, exports, and a resource tree.
@@ -82,6 +83,11 @@ def mach_sections(wide=False, count=2):
 # valid tables as well as their boundary and error cases.
 def fuzz_seeds():
     return {
+        'linkage-elf32-big': elf_linkage(False, True),
+        'linkage-elf64-stripped-sysv': elf_linkage(True, False, True),
+        'linkage-elf64-stripped-gnu': elf_linkage(True, True, True, True),
+        'linkage-mach32-big': mach_linkage(False, True),
+        'linkage-mach64': mach_linkage(),
         'directories-pe32': pe_details(False),
         'directories-pe64': pe_details(True),
         'sections-mach32': mach_sections(False),

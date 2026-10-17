@@ -22,23 +22,57 @@ jobs:
       - if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang lld llvm qemu-user
+          sudo apt-get install -y clang lld llvm qemu-user valgrind
           make samples SAMPLE_ARGS='--llvm-bin /usr/bin --lld-bin /usr/bin --formats elf pe'
       # macOS provides the SDK/linker/lipo needed to rebuild thin and universal Mach-O.
       - if: runner.os == 'macOS'
         run: make samples SAMPLE_ARGS='--formats mach'
       # Run unit and CLI tests, then rebuild under sanitizers and mutate sample inputs.
       - run: make CC=clang test
+      - if: runner.os == 'Linux'
+        run: make differential DIFFERENTIAL_ARGS='--require-tools readelf llvm-readobj'
+      - if: runner.os == 'macOS'
+        run: make differential DIFFERENTIAL_ARGS='--require-tools otool'
       - run: make CC=clang sanitize
+      - if: runner.os == 'Linux'
+        run: make CC=clang valgrind
       - run: make CC=clang fuzz-smoke
       - if: runner.os == 'Linux'
         run: |
           make FUZZ_CC=clang fuzz
           python3 tests/run_fuzz.py bin/fuzz/coffin-fuzz --runs 10000
+      # Tag builds stage platform archives, but a final job exposes them only
+      # after BOTH operating systems pass every required check.
+      - if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          test "$GITHUB_REF_NAME" = "v$(cat VERSION)"
+          make package
+      - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          name: candidate-${{ matrix.os }}
+          path: dist/
       # Retain fuzz diagnostics only after a failure so a developer can reproduce it.
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: fuzz-diagnostics-${{ matrix.os }}
-          path: bin/fuzz/
+          path: |
+            bin/fuzz/
+            bin/valgrind/memory-logs/
           if-no-files-found: ignore
+
+  release-candidates:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: candidate-*
+          path: release-candidates
+          merge-multiple: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-release-candidates
+          path: release-candidates/

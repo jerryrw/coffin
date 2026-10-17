@@ -47,7 +47,7 @@ int parse_elf_file(const InputFile *input, ELFInfo *info)
     unsigned char bytes[64];
     FILE *file = input->file;
     memset(info, 0, sizeof(*info));
-    snprintf(info->filename, sizeof(info->filename), "%s", input->path);
+    escape_display(info->filename, sizeof(info->filename), (const unsigned char *)input->path, strlen(input->path));
     info->file_size = input->size;
     strcpy(info->sha256hashstring, input->sha256);
     strcpy(info->md5hashstring, input->md5);
@@ -168,10 +168,14 @@ int parse_elf_file(const InputFile *input, ELFInfo *info)
                 remaining -= chunk; pos += chunk;
             }
             if (!terminated) goto invalid;
+            char display[256];
+            escape_display(display, sizeof(display), (const unsigned char *)info->section_names[i], stored);
+            strcpy(info->section_names[i], display);
             if (stored == sizeof(info->section_names[i]) - 1)
                 strcpy(info->section_names[i] + stored - 3, "...");
         }
     }
+    if (parse_elf_details(input, info) != STATUS_SUCCESS) goto invalid;
     return STATUS_SUCCESS;
 invalid:
     free_elf_info(info);
@@ -257,6 +261,9 @@ void print_elf_info(const ELFInfo *elf_info)
  */
 void free_elf_info(ELFInfo *info)
 {
+    free(info->dependencies); free(info->symbols);
+    info->dependencies = NULL; info->symbols = NULL;
+    info->dependency_count = info->dependency_capacity = info->symbol_count = info->symbol_capacity = 0;
     free(info->program_headers); free(info->section_headers); free(info->section_names);
     info->program_headers = NULL; info->section_headers = NULL; info->section_names = NULL;
     info->program_count = info->section_count = 0;
