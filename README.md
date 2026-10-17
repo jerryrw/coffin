@@ -534,6 +534,10 @@ make FUZZ_CC=clang fuzz
 python3 tests/run_fuzz.py bin/fuzz/coffin-fuzz --runs 10000
 ```
 
+On Linux, libFuzzer links C++ runtime libraries. If the build fails with
+`cannot find -lstdc++`, install your distro's GNU C++ development package first
+(`g++` on Debian/Ubuntu, `gcc-c++` on Fedora/RHEL), then rerun `make fuzz`.
+
 #### macOS LLVM setup
 
 On macOS, Apple Clang may lack that runtime. If Homebrew is installed, install

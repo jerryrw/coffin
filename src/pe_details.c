@@ -370,7 +370,15 @@ static int resource_label(PEReader *r, uint32_t value, unsigned depth, char out[
         char utf8[8]; size_t n;
         if (cp < 32 || (cp >= 127 && cp <= 159) || cp == 0x061c || cp == 0x200e || cp == 0x200f || cp == 0x2028 || cp == 0x2029 ||
             (cp >= 0x202a && cp <= 0x202e) || (cp >= 0x2066 && cp <= 0x2069) || cp == '/' || cp == '\\') {
-            snprintf(utf8, sizeof(utf8), "\\u%04X", cp); n = 6;
+            static const char hex[] = "0123456789ABCDEF";
+            uint16_t esc = (uint16_t)cp;
+            utf8[0] = '\\';
+            utf8[1] = 'u';
+            utf8[2] = hex[(esc >> 12) & 0xF];
+            utf8[3] = hex[(esc >> 8) & 0xF];
+            utf8[4] = hex[(esc >> 4) & 0xF];
+            utf8[5] = hex[esc & 0xF];
+            n = 6;
         } else if (cp < 0x80) { utf8[0] = (char)cp; n = 1; }
         else if (cp < 0x800) {
             utf8[0] = (char)(0xc0 | (cp >> 6)); utf8[1] = (char)(0x80 | (cp & 63)); n = 2;
