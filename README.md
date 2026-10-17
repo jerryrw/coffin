@@ -165,10 +165,18 @@ structure packing.
 
 Default and verbose reports include every parsed PE section, import, export, and resource; every ELF
 program and section header; and every Mach-O load command and section. Storage
-grows with the input instead of truncating tables at 16 or 128 entries. Each
-report array has a 64 MiB allocation budget; exceeding it or another parser work
-limit returns an error rather than silently omitting entries. Universal
-containers are limited to 64 architecture slices.
+grows with the input instead of truncating tables at 16 or 128 entries. Parser table arrays share a 64 MiB allocation-growth budget per input, including
+all universal slices; each array accepts at most 100,000 entries. Metadata reads
+share a separate 64 MiB byte budget and 1,000,000-read limit. Repeated ELF address
+and extended-index lookups share 16,777,216 record visits. Exceeding these limits
+returns an error with a `Parser resource limit exceeded` diagnostic and no report;
+entries are never silently omitted. Universal containers accept at most 64 slices.
+These fixed policies are defined in `include/common.h`.
+
+The table budget is not a cap on total process memory: bounded decoding buffers,
+entropy caches, and icon reconstruction have separate limits. Streaming hashes
+still read the whole file, so these budgets impose neither a file-size limit nor
+a wall-clock timeout on arbitrary inputs.
 
 ELF32/ELF64 use the file's declared byte order. Extended section counts, section
 name-table indices, and program-header counts are resolved through section zero.
@@ -501,7 +509,19 @@ temporary staging directory, archive membership, executable bytes, and checksums
 `make differential` compares the included samples against available GNU readelf,
 LLVM readelf/readobj, and macOS otool: section locations/sizes, architecture,
 permissions, entry points, imports, symbols, and linked-library declarations.
-Missing optional tools are reported; CI explicitly requires platform tools.
+It also checks frozen ELF width/byte-order/extended-numbering cases, literal
+versioned static symbols, PE directory samples, and rejection of unambiguously
+truncated headers. Missing optional tools are reported; CI explicitly requires
+platform tools. GNU and LLVM readelf text-format differences have dedicated tests.
+When older LLVM omits extended-count program headers, that table is compared
+against GNU readelf on the original file, with an explicit note. If GNU readelf
+is unavailable, the check fails with upgrade/install instructions.
+
+The [permanent regression corpus](tests/corpus/README.md) contains checked-in
+inputs with SHA-256 checksums, expected status, and an explanation per case.
+`make test` and `make sanitize` run it with timeouts. Budget unit tests cover
+exact boundaries and shared counters; a generated universal Mach-O verifies
+that valid individual slices cannot each reset the allocation allowance.
 
 To measure focused versus section reporting on a large input:
 
@@ -569,10 +589,12 @@ fuzzing; regular builds and `fuzz-smoke` can use Apple Clang. See the
 
 The runner seeds a persistent corpus from the bundled samples, the compiled
 root-level Hello World samples, and synthetic fixtures covering directories,
-payloads, sections, and universal containers. It stores its log and crash
+payloads, sections, and universal containers, plus the checksummed permanent
+regression corpus. It stores its log and crash
 artifacts under `bin/fuzz/`. Increase `--runs` for a longer run. Inputs are capped at 1 MiB for fuzzing only.
 Reproduce a libFuzzer crash with `bin/fuzz/coffin-fuzz path/to/crash-artifact`,
-then add a minimized regression case to `tests/test_malformed.py`. The
+then preserve the minimized bytes and expected behavior in `tests/corpus/`
+and add a focused assertion for the original failure. The
 [release/fuzzing guide](docs/RELEASING.md#longer-fuzzing-and-failure-follow-up)
 explains minimization and the separate 30-minute daily fuzz workflow, retained
 corpus, and diagnostic artifacts. For a timed local run, use `--seconds 1800`

@@ -11,6 +11,7 @@ from pathlib import Path
 import shutil
 import subprocess
 from fixtures import fuzz_seeds
+from regression_corpus import corpus_cases
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('binary', type=Path)
@@ -36,6 +37,8 @@ for sample in sorted(root.glob('hello-*')):
     shutil.copyfile(sample, corpus / sample.name)
 for name, data in fuzz_seeds().items():
     (corpus / name).write_bytes(data)
+for case, _, data in corpus_cases():
+    (corpus / ('regression-' + case['file'])).write_bytes(data)
 log = work / 'fuzz.log'
 # Combine stdout/stderr into one diagnostic log. The limits bound each input's
 # size and execution time; --runs chooses how many mutations libFuzzer attempts.

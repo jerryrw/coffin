@@ -12,6 +12,7 @@ import subprocess
 import sys
 
 from fixtures import fuzz_seeds
+from regression_corpus import corpus_cases
 
 
 def main():
@@ -52,13 +53,15 @@ def main():
             raise RuntimeError(f'{name}: checker exited {result.returncode}, expected {wanted}; see {log}')
 
     check('checker-self-test', [directory / 'memory-probe'], probe=True)
-    for unit in ('test-entropy', 'test-hashes', 'test-display'):
+    for unit in ('test-entropy', 'test-hashes', 'test-display', 'test-limits'):
         check(unit, [directory / unit], expected=0)
 
     cases = fuzz_seeds()
     cases.update({'empty': b'', 'truncated-pe': b'MZ' + bytes(14),
                   'truncated-elf': b'\x7fELF' + bytes(12),
                   'truncated-mach': b'\xcf\xfa\xed\xfe' + bytes(12)})
+    for case, _, data in corpus_cases():
+        cases['regression-' + case['file']] = data
     root = Path(__file__).resolve().parent.parent
     for sample in sorted(root.glob('hello-*')):
         if sample.is_file():
@@ -75,7 +78,7 @@ def main():
         if baseline.returncode not in (0, 1):
             raise RuntimeError(f'{name}: unexpected application exit {baseline.returncode}')
         check(name, command, expected=baseline.returncode)
-    print(f'{args.tool}: {len(cases)} parser cases and 3 unit programs passed; logs: {logs}')
+    print(f'{args.tool}: {len(cases)} parser cases and 4 unit programs passed; logs: {logs}')
 
 
 if __name__ == '__main__':

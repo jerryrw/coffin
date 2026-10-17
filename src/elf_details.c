@@ -7,9 +7,10 @@
 
 /* Translate a virtual address only through file-backed PT_LOAD bytes. Two
  * matching segments are ambiguous, so do not silently choose one of them. */
-static int virtual_range(const ELFInfo *info, uint64_t address, uint64_t length,
+static int virtual_range(const InputFile *input, const ELFInfo *info, uint64_t address, uint64_t length,
                           uint64_t *offset, uint64_t *available)
 {
+    if (parser_lookup_work(input, info->program_count) != STATUS_SUCCESS) return STATUS_ERROR;
     unsigned matches = 0;
     for (unsigned i = 0; i < info->program_count; ++i) {
         const ProgramHeader *p = &info->program_headers[i];
@@ -30,7 +31,7 @@ static int needed(const InputFile *input, ELFInfo *info, uint64_t strings,
     if (index >= size || read_display_string(input, strings + index, size - index,
             d.name, sizeof(d.name), work) != STATUS_SUCCESS ||
         info->dependency_count >= LINKAGE_WORK_LIMIT ||
-        reserve_array((void **)&info->dependencies, &info->dependency_capacity,
+        reserve_array(input, (void **)&info->dependencies, &info->dependency_capacity,
                       info->dependency_count + 1, sizeof(d)) != STATUS_SUCCESS) return STATUS_ERROR;
     info->dependencies[info->dependency_count++] = d;
     return STATUS_SUCCESS;
@@ -49,7 +50,7 @@ static int symbol_table(const InputFile *input, ELFInfo *info, uint64_t offset,
     const SectionHeader *indices = NULL; int searched_indices = 0;
     for (uint64_t i = 0; i < count; ++i) {
         unsigned char b[24]; BinarySymbol s = {0};
-        if (read_at(input->file, offset + i * width, b, width, input->size) != STATUS_SUCCESS) return STATUS_ERROR;
+        if (parser_read(input, offset + i * width, b, width) != STATUS_SUCCESS) return STATUS_ERROR;
         uint32_t name = read32_order(b, info->big_endian);
         unsigned fields = info->is_64bit ? 4 : 12;
         s.binding = b[fields] >> 4; s.type = b[fields] & 15;
@@ -63,6 +64,7 @@ static int symbol_table(const InputFile *input, ELFInfo *info, uint64_t offset,
             if (!searched_indices) {
                 /* Search once per table, not once per symbol. Charge the scan
                  * against the same bounded metadata work allowance as strings. */
+                if (parser_lookup_work(input, info->section_count) != STATUS_SUCCESS) return STATUS_ERROR;
                 if (info->section_count > 16u * 1024u * 1024u - *work) return STATUS_ERROR;
                 *work += info->section_count;
                 for (unsigned j = 0; j < info->section_count; ++j) {
@@ -75,13 +77,13 @@ static int symbol_table(const InputFile *input, ELFInfo *info, uint64_t offset,
             }
             unsigned char index[4];
             if (!indices || indices->sh_entsize != 4 || indices->sh_size / 4 != count || indices->sh_size % 4 ||
-                read_at(input->file, indices->sh_offset + i * 4, index, 4, input->size) != STATUS_SUCCESS) return STATUS_ERROR;
+                parser_read(input, indices->sh_offset + i * 4, index, 4) != STATUS_SUCCESS) return STATUS_ERROR;
             s.section = read32_order(index, info->big_endian);
             if (s.section >= info->section_count) return STATUS_ERROR;
         }
         if (name >= string_size || read_display_string(input, strings + name, string_size - name,
                 s.name, sizeof(s.name), work) != STATUS_SUCCESS ||
-            reserve_array((void **)&info->symbols, &info->symbol_capacity,
+            reserve_array(input, (void **)&info->symbols, &info->symbol_capacity,
                           info->symbol_count + 1, sizeof(s)) != STATUS_SUCCESS) return STATUS_ERROR;
         info->symbols[info->symbol_count++] = s;
     }
@@ -95,8 +97,8 @@ static int dynamic_count(const InputFile *input, const ELFInfo *info, uint64_t a
                           int gnu, uint64_t *count)
 {
     uint64_t offset, available; unsigned char b[16];
-    if (virtual_range(info, address, gnu ? 16 : 8, &offset, &available) != STATUS_SUCCESS ||
-        read_at(input->file, offset, b, gnu ? 16 : 8, input->size) != STATUS_SUCCESS) return STATUS_ERROR;
+    if (virtual_range(input, info, address, gnu ? 16 : 8, &offset, &available) != STATUS_SUCCESS ||
+        parser_read(input, offset, b, gnu ? 16 : 8) != STATUS_SUCCESS) return STATUS_ERROR;
     uint32_t buckets = read32_order(b, info->big_endian);
     uint32_t second = read32_order(b + 4, info->big_endian);
     if (buckets > LINKAGE_WORK_LIMIT || second > LINKAGE_WORK_LIMIT) return STATUS_ERROR;
@@ -109,7 +111,7 @@ static int dynamic_count(const InputFile *input, const ELFInfo *info, uint64_t a
     if (!bloom || bucket_at > available || (uint64_t)buckets * 4 > available - bucket_at) return STATUS_ERROR;
     uint32_t last = 0;
     for (unsigned i = 0; i < buckets; ++i) {
-        if (read_at(input->file, offset + bucket_at + i * 4ULL, b, 4, input->size) != STATUS_SUCCESS) return STATUS_ERROR;
+        if (parser_read(input, offset + bucket_at + i * 4ULL, b, 4) != STATUS_SUCCESS) return STATUS_ERROR;
         uint32_t value = read32_order(b, info->big_endian);
         if (value && value < second) return STATUS_ERROR;
         if (value > last) last = value;
@@ -120,7 +122,7 @@ static int dynamic_count(const InputFile *input, const ELFInfo *info, uint64_t a
     for (uint64_t i = last; i < LINKAGE_WORK_LIMIT; ++i) {
         uint64_t at = chain_at + (i - second) * 4;
         if (!file_range_valid(at, 4, available) ||
-            read_at(input->file, offset + at, b, 4, input->size) != STATUS_SUCCESS) return STATUS_ERROR;
+            parser_read(input, offset + at, b, 4) != STATUS_SUCCESS) return STATUS_ERROR;
         if (read32_order(b, info->big_endian) & 1) { *count = i + 1; return STATUS_SUCCESS; }
     }
     return STATUS_ERROR;
@@ -137,7 +139,7 @@ static int dynamic_table(const InputFile *input, ELFInfo *info, uint64_t offset,
     uint64_t str = 0, strsize = 0, sym = 0, syment = 0, hash = 0, gnuhash = 0, end = 0;
     unsigned char b[16];
     for (uint64_t at = 0; at < size; at += width) {
-        if (read_at(input->file, offset + at, b, width, input->size) != STATUS_SUCCESS) return STATUS_ERROR;
+        if (parser_read(input, offset + at, b, width) != STATUS_SUCCESS) return STATUS_ERROR;
         uint64_t tag = info->is_64bit ? read64_order(b, info->big_endian) : read32_order(b, info->big_endian);
         uint64_t value = info->is_64bit ? read64_order(b + 8, info->big_endian) : read32_order(b + 4, info->big_endian);
         if (!tag) { end = at + width; break; }
@@ -148,9 +150,9 @@ static int dynamic_table(const InputFile *input, ELFInfo *info, uint64_t offset,
     if (!end) return STATUS_ERROR;
     uint64_t str_offset = 0, available;
     if (strings) { str_offset = strings->sh_offset; strsize = strings->sh_size; }
-    else if (strsize && virtual_range(info, str, strsize, &str_offset, &available) != STATUS_SUCCESS) return STATUS_ERROR;
+    else if (strsize && virtual_range(input, info, str, strsize, &str_offset, &available) != STATUS_SUCCESS) return STATUS_ERROR;
     for (uint64_t at = 0; at + width < end; at += width) {
-        if (read_at(input->file, offset + at, b, width, input->size) != STATUS_SUCCESS) return STATUS_ERROR;
+        if (parser_read(input, offset + at, b, width) != STATUS_SUCCESS) return STATUS_ERROR;
         uint64_t tag = info->is_64bit ? read64_order(b, info->big_endian) : read32_order(b, info->big_endian);
         uint64_t value = info->is_64bit ? read64_order(b + 8, info->big_endian) : read32_order(b + 4, info->big_endian);
         if (tag == 1 && needed(input, info, str_offset, strsize, value, work) != STATUS_SUCCESS) return STATUS_ERROR;
@@ -160,7 +162,7 @@ static int dynamic_table(const InputFile *input, ELFInfo *info, uint64_t offset,
         uint64_t count, sym_offset;
         if (syment != (info->is_64bit ? 24u : 16u) ||
             dynamic_count(input, info, hash ? hash : gnuhash, !hash, &count) != STATUS_SUCCESS ||
-            virtual_range(info, sym, count * syment, &sym_offset, &available) != STATUS_SUCCESS ||
+            virtual_range(input, info, sym, count * syment, &sym_offset, &available) != STATUS_SUCCESS ||
             symbol_table(input, info, sym_offset, count, str_offset, strsize, UINT32_MAX, 1, work) != STATUS_SUCCESS) return STATUS_ERROR;
     }
     return STATUS_SUCCESS;

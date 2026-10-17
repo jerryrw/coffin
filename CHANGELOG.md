@@ -15,3 +15,9 @@ Initial release preparation. No release tag has been created by these changes.
 - Escape untrusted report names and paths; skip unused section entropy work.
 - Add independent-tool comparisons, longer scheduled fuzz runs with corpus
   retention, installation targets, version output, and release packaging.
+- Expand independent-tool comparisons to frozen width/order/numbering and
+  symbol-version regressions, plus malformed-header rejection checks.
+- Keep a permanent checksummed regression corpus in normal, sanitizer, memory,
+  and fuzz tests.
+- Share table-allocation, metadata-read, and ELF lookup budgets across an input,
+  including universal slices; reject excess work explicitly.

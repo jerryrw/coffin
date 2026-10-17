@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+from regression_corpus import corpus_cases
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -45,7 +46,8 @@ def number(block, name):
 
 
 def llvm_sections(binary, oracle, path):
-    fmt = 'pe' if path.suffix == '.exe' else 'elf' if 'mach' not in path.name else 'mach'
+    magic = path.read_bytes()[:4]
+    fmt = 'pe' if magic[:2] == b'MZ' else 'elf' if magic == b'\x7fELF' else 'mach'
     output = run(oracle, '--file-headers', '--sections', path)
     # A universal file emits one independent File block per architecture.
     blocks = re.split(r'\nFile: ', output)[1:]
@@ -109,6 +111,26 @@ def readelf_programs(output):
     return programs
 
 
+def reference_programs(output, oracle, path):
+    """Keep extended-count checks on LLVM versions without PN_XNUM support.
+
+    Older LLVM can exit successfully but omit the program table for e_phnum
+    65535. GNU readelf still checks the ORIGINAL file; no counts are patched and
+    no Coffin rows are excluded. LLVM continues checking its other metadata.
+    Upstream support: https://github.com/llvm/llvm-project/pull/165278
+    """
+    programs = readelf_programs(output)
+    extended = re.search(r'^\s*Number of program headers:\s*65535(?:\s|$)', output, re.M)
+    if programs or not extended or not Path(oracle).name.startswith('llvm-readelf'):
+        return programs
+    fallback = tool('readelf')
+    if not fallback:
+        raise AssertionError(f'{path}: LLVM omitted extended-count program headers; '
+                             'install GNU readelf or upgrade LLVM')
+    print(f'NOTE {Path(path).name}: GNU readelf checks extended-count program headers omitted by {oracle}')
+    return readelf_programs(run(fallback, '-W', '-l', path))
+
+
 def readelf_symbol_name(tail, dynamic):
     """Remove readelf's dynamic-version annotation, preserving static names.
 
@@ -125,7 +147,7 @@ def elf_reference(binary, oracle, path):
     actual = run(binary, '--headers', '--program-headers', '--symbols', '--dependencies', path)
     entry = int(re.search(r'Entry point address:\s*(0x[0-9a-fA-F]+)', expected).group(1), 0)
     assert f'VA 0x{entry:016X}' in actual if re.search(r'Class:\s+ELF64', expected) else f'VA 0x{entry:08X}' in actual
-    expected_programs = readelf_programs(expected)
+    expected_programs = reference_programs(expected, oracle, path)
     program_report = run(binary, '--program-headers', path)
     found = rows(program_report)
     assert len(found) == len(expected_programs), (path, found, expected_programs)
@@ -165,6 +187,19 @@ def mach_reference(binary, oracle, path):
                 assert row[6] == ''.join(c if flags & m else '-' for c, m in [('R', 1), ('W', 2), ('X', 4)])
 
 
+def reject_reference(binary, oracle, path, llvm):
+    """Only compare rejection for fixtures with unequivocally broken headers.
+
+    Resource cycles and policy-limit inputs are intentionally excluded: header
+    tools may accept those because they never traverse the offending metadata.
+    """
+    reference = subprocess.run([str(oracle), '--file-headers' if llvm else '-h', str(path)],
+                               capture_output=True, timeout=30)
+    actual = subprocess.run([str(binary), str(path)], capture_output=True, timeout=10)
+    assert reference.returncode > 0, (path, reference.returncode, reference.stderr)
+    assert actual.returncode == 1 and b'Analysis Report' not in actual.stdout, (path, actual.stderr)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('binary', type=Path)
@@ -175,14 +210,19 @@ def main():
     if missing:
         parser.error('Required independent tools missing: ' + ', '.join(missing))
     binary = args.binary.resolve(); checks = 0
+    corpus = {path: case for case, path, _ in corpus_cases()}
     for name, executable in tools.items():
         if not executable:
             print(f'SKIP optional tool {name}: not installed'); continue
         paths = sorted(ROOT.glob('hello-*'))
+        paths.extend(path for path, case in corpus.items()
+                     if name in case['differential'])
         if name in ('readelf', 'llvm-readelf') and binary.read_bytes()[:4] == b'\x7fELF':
             paths.append(binary)  # A real dynamic Linux executable, not just fixtures.
         for path in paths:
-            if name == 'llvm-readobj':
+            if path in corpus and corpus[path]['exit'] == 1:
+                reject_reference(binary, executable, path, name == 'llvm-readobj')
+            elif name == 'llvm-readobj':
                 llvm_sections(binary, executable, path)
             elif name in ('readelf', 'llvm-readelf') and path.read_bytes()[:4] == b'\x7fELF':
                 elf_reference(binary, executable, path)

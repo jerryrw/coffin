@@ -1,0 +1,341 @@
+[
+  {
+    "file": "linkage-elf32-big.bin",
+    "sha256": "9387b5ece1a65ba063ff53aca37d950c4893937838cf38f3ee1f54417c70cf6b",
+    "exit": 0,
+    "reason": "Synthetic linkage-elf32-big: preserve successful parsing and cleanup.",
+    "differential": []
+  },
+  {
+    "file": "linkage-elf64-stripped-sysv.bin",
+    "sha256": "30a91fec05ece4d4550e822689436c74af6cbcfe179e10c61f20c20c51299ede",
+    "exit": 0,
+    "reason": "Synthetic linkage-elf64-stripped-sysv: preserve successful parsing and cleanup.",
+    "differential": []
+  },
+  {
+    "file": "linkage-elf64-stripped-gnu.bin",
+    "sha256": "0dc731a63cc11dc8b357829c8a26bd09a6697326c8584e33570086aaac51caab",
+    "exit": 0,
+    "reason": "Synthetic linkage-elf64-stripped-gnu: preserve successful parsing and cleanup.",
+    "differential": []
+  },
+  {
+    "file": "linkage-mach32-big.bin",
+    "sha256": "16c3191f8250b8c1fa1a6cbcbe7636f8e01c78376a1421084d43ad5048316d06",
+    "exit": 0,
+    "reason": "Synthetic linkage-mach32-big: preserve successful parsing and cleanup.",
+    "differential": []
+  },
+  {
+    "file": "linkage-mach64.bin",
+    "sha256": "2941aeed67503e1d61eedaac3821dcce3be234f26d09410d2c1d5de7ba54cf26",
+    "exit": 0,
+    "reason": "Synthetic linkage-mach64: preserve successful parsing and cleanup.",
+    "differential": []
+  },
+  {
+    "file": "directories-pe32.bin",
+    "sha256": "649e16dc33b452b2724225be3b570372d8190ba03df8eeb8b1f382bdc4e7c7b8",
+    "exit": 0,
+    "reason": "Synthetic directories-pe32: preserve successful parsing and cleanup.",
+    "differential": [
+      "llvm-readobj"
+    ]
+  },
+  {
+    "file": "directories-pe64.bin",
+    "sha256": "c20e392736de1225f5ec25e8c9aaf27f5c0f9c2ab78ee0c2e5974a2aa2cd4e91",
+    "exit": 0,
+    "reason": "Synthetic directories-pe64: preserve successful parsing and cleanup.",
+    "differential": [
+      "llvm-readobj"
+    ]
+  },
+  {
+    "file": "sections-mach32.bin",
+    "sha256": "897baa2aadd8a8538beb72bee761444b6955641475646e1fd62d514f0e0630b6",
+    "exit": 0,
+    "reason": "Synthetic sections-mach32: preserve successful parsing and cleanup.",
+    "differential": []
+  },
+  {
+    "file": "sections-mach64.bin",
+    "sha256": "8993d7ab921f20f2cf08467f32bfc91e010f1cd232dfb0afce0c86b1997df921",
+    "exit": 0,
+    "reason": "Synthetic sections-mach64: preserve successful parsing and cleanup.",
+    "differential": []
+  },
+  {
+    "file": "universal-mach32.bin",
+    "sha256": "35289d518da9f13c3c1e6c090ddcba47aa021902c159958369ec204ab548f7ec",
+    "exit": 0,
+    "reason": "Synthetic universal-mach32: preserve successful parsing and cleanup.",
+    "differential": []
+  },
+  {
+    "file": "universal-mach64.bin",
+    "sha256": "1e9d151e4f2971982ee17b43d81b028721fd4d902e09f3e6896f504a26689d18",
+    "exit": 0,
+    "reason": "Synthetic universal-mach64: preserve successful parsing and cleanup.",
+    "differential": []
+  },
+  {
+    "file": "elf32-big.bin",
+    "sha256": "9ecbdd9af2e7b628c8c2140fb12feede3c06066f45c64151ce3c88c0e9b19f03",
+    "exit": 0,
+    "reason": "Synthetic elf32-big: preserve successful parsing and cleanup.",
+    "differential": []
+  },
+  {
+    "file": "elf64-big-extended.bin",
+    "sha256": "55d4939f4a29821dcf0724d8a3f8ffa9c919f67b64096ad0396ea2a934d1371a",
+    "exit": 0,
+    "reason": "Synthetic elf64-big-extended: preserve successful parsing and cleanup.",
+    "differential": []
+  },
+  {
+    "file": "mach32-big.bin",
+    "sha256": "b670a922d468140a4daac8d53d405a22e6a8c92a44ced603779809cf1e753b43",
+    "exit": 0,
+    "reason": "Synthetic mach32-big: preserve successful parsing and cleanup.",
+    "differential": []
+  },
+  {
+    "file": "mach64-big.bin",
+    "sha256": "9330a20b99dfca747d00812197cfdf6188ca11c0bad7fd91574fa9689ed94136",
+    "exit": 0,
+    "reason": "Synthetic mach64-big: preserve successful parsing and cleanup.",
+    "differential": []
+  },
+  {
+    "file": "resource-icons.bin",
+    "sha256": "8a5f1069fa20e7eda853cc583fa9776e5d97429787b43421aeae373592ff3e67",
+    "exit": 0,
+    "reason": "Synthetic resource-icons: preserve successful parsing and cleanup.",
+    "differential": []
+  },
+  {
+    "file": "resource-cursors.bin",
+    "sha256": "d28c2197a243ea1625c55d77a99d779fe0fe5af76fffc5d76010589ceac4a6cf",
+    "exit": 0,
+    "reason": "Synthetic resource-cursors: preserve successful parsing and cleanup.",
+    "differential": []
+  },
+  {
+    "file": "delay-pe32.bin",
+    "sha256": "a631f3f23b38eb6f22203eceb2c696dbc2bf2395ea60c732bc8cbbc2dfc8a115",
+    "exit": 0,
+    "reason": "Synthetic delay-pe32: preserve successful parsing and cleanup.",
+    "differential": []
+  },
+  {
+    "file": "delay-pe64.bin",
+    "sha256": "497a51d01e38689311510908a50bae72da32b896d95911e80d7e4d600ce9a498",
+    "exit": 0,
+    "reason": "Synthetic delay-pe64: preserve successful parsing and cleanup.",
+    "differential": []
+  },
+  {
+    "file": "delay-legacy-pe32.bin",
+    "sha256": "5a300c06e774d86861586620d8a2b8ef908dc8cf08f38548dac3fb8e82247eda",
+    "exit": 0,
+    "reason": "Synthetic delay-legacy-pe32: preserve successful parsing and cleanup.",
+    "differential": []
+  },
+  {
+    "file": "dialog-standard.bin",
+    "sha256": "64d686a4d87d8e3eb83632a26d9e6fc5bfa6397c1beabf59e7ea4b4c27772907",
+    "exit": 0,
+    "reason": "Synthetic dialog-standard: preserve successful parsing and cleanup.",
+    "differential": []
+  },
+  {
+    "file": "dialog-extended.bin",
+    "sha256": "9e48e3406a23c8b61b91fa88b98e896d3ed4edb0f573f1a4dcbe2d048c285a54",
+    "exit": 0,
+    "reason": "Synthetic dialog-extended: preserve successful parsing and cleanup.",
+    "differential": []
+  },
+  {
+    "file": "legacy-message-cp1252.bin",
+    "sha256": "0d70a33931e4214b37771093eff4af2d85041ec8f7da2e101991850450003ed3",
+    "exit": 0,
+    "reason": "Synthetic legacy-message-cp1252: preserve successful parsing and cleanup.",
+    "differential": []
+  },
+  {
+    "file": "payload-manifest.bin",
+    "sha256": "ad145c1a3083ccc16824328a1567e6ee786eb8b3ab737e4862cd48da6e550b44",
+    "exit": 0,
+    "reason": "Synthetic payload-manifest: preserve successful parsing and cleanup.",
+    "differential": []
+  },
+  {
+    "file": "payload-version.bin",
+    "sha256": "311b8745a256d40c5eb1653184d82cf082be32b78f3ca4181dbdd001a5fb0d17",
+    "exit": 0,
+    "reason": "Synthetic payload-version: preserve successful parsing and cleanup.",
+    "differential": []
+  },
+  {
+    "file": "payload-strings.bin",
+    "sha256": "8ae7afda3a4922ee3f863cc0c495dedc08d83a7ff7ca9dbbd9ea094cab479f3d",
+    "exit": 0,
+    "reason": "Synthetic payload-strings: preserve successful parsing and cleanup.",
+    "differential": []
+  },
+  {
+    "file": "matrix-elf32-little-standard.bin",
+    "sha256": "9609713ba5ae305bad9e300361d7b95aa7650a9e3137fd0472d8ffb0247914ee",
+    "exit": 0,
+    "reason": "ELF byte order and extended-numbering table values agree with independent tools.",
+    "differential": [
+      "readelf",
+      "llvm-readelf",
+      "llvm-readobj"
+    ]
+  },
+  {
+    "file": "matrix-elf32-little-extended.bin",
+    "sha256": "031b2151447ba0c454606d857951cd20c395b18661e07d8463d8cfee27fb487d",
+    "exit": 0,
+    "reason": "ELF byte order and extended-numbering table values agree with independent tools.",
+    "differential": [
+      "readelf",
+      "llvm-readelf",
+      "llvm-readobj"
+    ]
+  },
+  {
+    "file": "matrix-elf32-big-standard.bin",
+    "sha256": "9ecbdd9af2e7b628c8c2140fb12feede3c06066f45c64151ce3c88c0e9b19f03",
+    "exit": 0,
+    "reason": "ELF byte order and extended-numbering table values agree with independent tools.",
+    "differential": [
+      "readelf",
+      "llvm-readelf",
+      "llvm-readobj"
+    ]
+  },
+  {
+    "file": "matrix-elf32-big-extended.bin",
+    "sha256": "dc529c86042eab0e0ab3828bfad13fd5b7881b8602f22a03593ba6b341249375",
+    "exit": 0,
+    "reason": "ELF byte order and extended-numbering table values agree with independent tools.",
+    "differential": [
+      "readelf",
+      "llvm-readelf",
+      "llvm-readobj"
+    ]
+  },
+  {
+    "file": "matrix-elf64-little-standard.bin",
+    "sha256": "da40d8192fe003efbef4126651b466fffa5b1f27789ec6484c28ddca34ab1f45",
+    "exit": 0,
+    "reason": "ELF byte order and extended-numbering table values agree with independent tools.",
+    "differential": [
+      "readelf",
+      "llvm-readelf",
+      "llvm-readobj"
+    ]
+  },
+  {
+    "file": "matrix-elf64-little-extended.bin",
+    "sha256": "2fb0e072f9ebb65a8a8f6962b531900cca139109f9ba4ad087ae2daa163a0c88",
+    "exit": 0,
+    "reason": "ELF byte order and extended-numbering table values agree with independent tools.",
+    "differential": [
+      "readelf",
+      "llvm-readelf",
+      "llvm-readobj"
+    ]
+  },
+  {
+    "file": "matrix-elf64-big-standard.bin",
+    "sha256": "0643033bc7ea2f92c7913bfb667277f1a7a922c47fa0e8a933967286c6e99bd7",
+    "exit": 0,
+    "reason": "ELF byte order and extended-numbering table values agree with independent tools.",
+    "differential": [
+      "readelf",
+      "llvm-readelf",
+      "llvm-readobj"
+    ]
+  },
+  {
+    "file": "matrix-elf64-big-extended.bin",
+    "sha256": "55d4939f4a29821dcf0724d8a3f8ffa9c919f67b64096ad0396ea2a934d1371a",
+    "exit": 0,
+    "reason": "ELF byte order and extended-numbering table values agree with independent tools.",
+    "differential": [
+      "readelf",
+      "llvm-readelf",
+      "llvm-readobj"
+    ]
+  },
+  {
+    "file": "elf-static-versioned-symbol.bin",
+    "sha256": "f3b15d12f30b2c659740faba8c7d756633b94b2e668a8912ed21962a526a81b6",
+    "exit": 0,
+    "reason": "Linux CI regression: retain literal @GLIBC suffix in static symbols.",
+    "differential": [
+      "readelf",
+      "llvm-readelf",
+      "llvm-readobj"
+    ]
+  },
+  {
+    "file": "pe-resource-cycle.bin",
+    "sha256": "870e8839d93bdc27620b49b67e828e094bfe2cf271c3d43bcd8a31e2f558aa47",
+    "exit": 1,
+    "reason": "Reject a resource directory pointing back to its root.",
+    "differential": []
+  },
+  {
+    "file": "empty.bin",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "exit": 1,
+    "reason": "Reject truncated input without a crash or successful report.",
+    "differential": [
+      "llvm-readobj",
+      "readelf",
+      "llvm-readelf"
+    ]
+  },
+  {
+    "file": "truncated-pe.bin",
+    "sha256": "16f174b65587ccf92ba58c88175be1d8977bc8e142ef74765bb3a435e6b1e758",
+    "exit": 1,
+    "reason": "Reject truncated input without a crash or successful report.",
+    "differential": [
+      "llvm-readobj"
+    ]
+  },
+  {
+    "file": "truncated-elf.bin",
+    "sha256": "69aa6b82d3b9e2bc578213ac6f77a0c1959053798cb026b96bac125d878b6766",
+    "exit": 1,
+    "reason": "Reject truncated input without a crash or successful report.",
+    "differential": [
+      "llvm-readobj",
+      "readelf",
+      "llvm-readelf"
+    ]
+  },
+  {
+    "file": "truncated-mach.bin",
+    "sha256": "ae5c0f4e1bd0f72840a4d0518cf981c60f4a20bc047013394f2427f13fd70ce1",
+    "exit": 1,
+    "reason": "Reject truncated input without a crash or successful report.",
+    "differential": [
+      "llvm-readobj"
+    ]
+  },
+  {
+    "file": "mach-overlapping-slices.bin",
+    "sha256": "b50d54c835af3b77b5eb767593b154bea35f5b76108f64db585374400bc7aa4f",
+    "exit": 1,
+    "reason": "Reject overlapping universal Mach-O slices.",
+    "differential": []
+  }
+]

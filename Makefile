@@ -103,12 +103,18 @@ $(BIN_DIR)/test-hashes: tests/test_hashes.c $(BUILD_DIR)/md5.o $(BUILD_DIR)/sha2
 $(BIN_DIR)/test-display: tests/test_display.c $(BUILD_DIR)/common.o $(BUILD_DIR)/md5.o $(BUILD_DIR)/sha256.o | $(BIN_DIR)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-test: $(TARGET) $(BIN_DIR)/test-entropy $(BIN_DIR)/test-hashes $(BIN_DIR)/test-display
+$(BIN_DIR)/test-limits: tests/test_limits.c $(BUILD_DIR)/common.o $(BUILD_DIR)/md5.o $(BUILD_DIR)/sha256.o | $(BIN_DIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test: $(TARGET) $(BIN_DIR)/test-entropy $(BIN_DIR)/test-hashes $(BIN_DIR)/test-display $(BIN_DIR)/test-limits
 	$(BIN_DIR)/test-entropy
 	$(BIN_DIR)/test-hashes
 	$(BIN_DIR)/test-display
+	$(BIN_DIR)/test-limits
 	$(PYTHON) tests/test_malformed.py $(TARGET)
 	$(PYTHON) tests/test_distribution.py $(TARGET)
+	$(PYTHON) tests/test_corpus.py $(TARGET)
+	$(PYTHON) tests/test_parser_limits.py $(TARGET)
 
 # Recursive $(MAKE) builds into separate directories. ASan detects many invalid
 # memory accesses; UBSan checks undefined operations. -Werror also makes compiler
@@ -184,7 +190,7 @@ fuzz-smoke: bin/fuzz/coffin-smoke
 # Remove only the selected build outputs. Normal and sanitizer directories
 # are separate; override BUILD_DIR/BIN_DIR to clean the sanitizer build too.
 clean:
-	rm -f $(OBJ) $(DEP) $(TARGET) $(BIN_DIR)/test-entropy $(BIN_DIR)/test-hashes $(BIN_DIR)/test-display $(BIN_DIR)/memory-probe
+	rm -f $(OBJ) $(DEP) $(TARGET) $(BIN_DIR)/test-entropy $(BIN_DIR)/test-hashes $(BIN_DIR)/test-display $(BIN_DIR)/test-limits $(BIN_DIR)/memory-probe
 
 # Independent tools are optional locally; CI specifies which tools must exist.
 differential: $(TARGET)

@@ -21,6 +21,20 @@ int file_size_checked(FILE *file, size_t *size);
 int file_range_valid(uint64_t offset, uint64_t length, uint64_t size);
 int read_at(FILE *file, uint64_t offset, void *buffer, size_t length, size_t size);
 
+/* One budget belongs to one prepared input, including every universal slice.
+ * Retained table growth and metadata reads are separate from streaming hashes,
+ * entropy, and resource extraction, which have their own policies. */
+#define PARSER_TABLE_BYTES (64u * 1024u * 1024u)
+#define PARSER_METADATA_BYTES (64u * 1024u * 1024u)
+#define PARSER_READ_OPERATIONS 1000000u
+#define PARSER_TABLE_ENTRIES 100000u
+#define PARSER_LOOKUP_STEPS (16u * 1024u * 1024u)
+
+typedef struct {
+    uint64_t table_bytes, metadata_bytes, read_operations, lookup_steps;
+    int exceeded;
+} ParserBudget;
+
 /*
  * InputFile borrows path (an argv string) and stores one open FILE * stream.
  * main owns opening/closing the stream. Other functions only borrow this record.
@@ -30,6 +44,8 @@ typedef struct {
      * FILE * is a pointer to the C library's stream state, not the file contents.
      */
     FILE *file;
+    ParserBudget budget_storage;
+    ParserBudget *budget;
     const char *path;
     size_t size;
     /*
@@ -45,7 +61,9 @@ typedef struct {
 } InputFile;
 
 /*
- * Hash the measured file once into the InputFile fields; does not close it.
+ * Hash the measured file once and initialize shared parser budgets.
+ * Call before parsing; do not copy InputFile afterward (budget points inside it).
+ * Does not close the file.
  */
 int input_prepare(InputFile *input);
 /*
@@ -62,7 +80,10 @@ uint64_t read64_order(const unsigned char *p, int big);
  * array points to the caller's pointer; capacity points to its slot count.
  * The helper may move the allocation. Needed elements and item size must be valid.
  */
-int reserve_array(void **array, unsigned *capacity, unsigned needed, size_t item_size);
+int reserve_array(const InputFile *input, void **array, unsigned *capacity, unsigned needed, size_t item_size);
+/* Parser-only read: bounds aggregate I/O even when slices overlap metadata. */
+int parser_read(const InputFile *input, uint64_t offset, void *buffer, size_t length);
+int parser_lookup_work(const InputFile *input, uint64_t steps);
 void print_permissions(uint32_t flags, uint32_t read_bit, uint32_t write_bit, uint32_t execute_bit);
 
 #define STATUS_ERROR -1
