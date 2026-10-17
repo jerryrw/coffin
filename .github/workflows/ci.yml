@@ -78,6 +78,10 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends git ca-certificates build-essential debhelper dpkg-dev python3
       - uses: actions/checkout@v4
+      # Container root can differ from the host owner of the mounted checkout.
+      # Register this exact workspace in the HOME used by subsequent steps.
+      - name: Trust the mounted checkout for packaging Git queries
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - run: make deb
       - name: Install, exercise, remove, and reinstall the Debian package
         run: python3 tests/test_deb.py dist/coffin_*_amd64.deb
