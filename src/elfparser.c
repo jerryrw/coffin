@@ -45,13 +45,12 @@ static SectionHeader decode_section(const unsigned char *p, int wide, int big)
 int parse_elf_file(const InputFile *input, ELFInfo *info)
 {
     unsigned char bytes[64];
-    FILE *file = input->file;
     memset(info, 0, sizeof(*info));
     escape_display(info->filename, sizeof(info->filename), (const unsigned char *)input->path, strlen(input->path));
     info->file_size = input->size;
     strcpy(info->sha256hashstring, input->sha256);
     strcpy(info->md5hashstring, input->md5);
-    if (read_at(file, 0, bytes, 16, input->size) != STATUS_SUCCESS ||
+    if (parser_read(input, 0, bytes, 16) != STATUS_SUCCESS ||
         memcmp(bytes, "\177ELF", 4) != 0) goto invalid;
     if ((bytes[4] != 1 && bytes[4] != 2) || (bytes[5] != 1 && bytes[5] != 2)) {
         fprintf(stderr, "Unsupported ELF variant: invalid ELF class or byte order\n");
@@ -64,7 +63,7 @@ int parse_elf_file(const InputFile *input, ELFInfo *info)
     size_t program_size = info->is_64bit ? 56 : 32;
     size_t section_size = info->is_64bit ? 64 : 40;
     size_t sizes_offset = info->is_64bit ? 52 : 40;
-    if (read_at(file, 0, bytes, header_size, input->size) != STATUS_SUCCESS ||
+    if (parser_read(input, 0, bytes, header_size) != STATUS_SUCCESS ||
         bytes[6] != 1 || E32(bytes + 20) != 1 || E16(bytes + sizes_offset) != header_size)
         goto invalid;
     info->flags = E32(bytes + (info->is_64bit ? 48 : 36));
@@ -82,7 +81,7 @@ int parse_elf_file(const InputFile *input, ELFInfo *info)
      */
     if (info->e_phnum == 0xffff || names_index == 0xffff || (!info->e_shnum && shoff)) {
         if (!shoff || shsize != section_size ||
-            read_at(file, shoff, bytes, section_size, input->size) != STATUS_SUCCESS) goto invalid;
+            parser_read(input, shoff, bytes, section_size) != STATUS_SUCCESS) goto invalid;
         SectionHeader zero = decode_section(bytes, info->is_64bit, big);
         if (zero.sh_type != 0 || zero.sh_size > UINT32_MAX) goto invalid;
         if (!info->e_shnum) info->e_shnum = (unsigned)zero.sh_size;
@@ -100,13 +99,13 @@ int parse_elf_file(const InputFile *input, ELFInfo *info)
      * The helper receives the ADDRESS of each array pointer so it can replace it.
      * Allocate name storage separately because one display name belongs to each section.
      */
-    if (reserve_array((void **)&info->program_headers, &info->program_capacity, info->e_phnum, sizeof(*info->program_headers)) != STATUS_SUCCESS ||
-        reserve_array((void **)&info->section_headers, &info->section_capacity, info->e_shnum, sizeof(*info->section_headers)) != STATUS_SUCCESS ||
-        reserve_array((void **)&info->section_names, &info->name_capacity, info->e_shnum, sizeof(*info->section_names)) != STATUS_SUCCESS) goto invalid;
+    if (reserve_array(input, (void **)&info->program_headers, &info->program_capacity, info->e_phnum, sizeof(*info->program_headers)) != STATUS_SUCCESS ||
+        reserve_array(input, (void **)&info->section_headers, &info->section_capacity, info->e_shnum, sizeof(*info->section_headers)) != STATUS_SUCCESS ||
+        reserve_array(input, (void **)&info->section_names, &info->name_capacity, info->e_shnum, sizeof(*info->section_names)) != STATUS_SUCCESS) goto invalid;
     if (info->e_shnum) memset(info->section_names, 0, (size_t)info->e_shnum * sizeof(*info->section_names));
     for (unsigned i = 0; i < info->e_phnum; ++i) {
         ProgramHeader h = {0};
-        if (read_at(file, phoff + (uint64_t)i * program_size, bytes, program_size, input->size) != STATUS_SUCCESS)
+        if (parser_read(input, phoff + (uint64_t)i * program_size, bytes, program_size) != STATUS_SUCCESS)
             goto invalid;
         if (info->is_64bit) {
             h.p_type = E32(bytes); h.p_flags = E32(bytes + 4);
@@ -124,7 +123,7 @@ int parse_elf_file(const InputFile *input, ELFInfo *info)
     }
     SectionHeader names = {0};
     if (names_index) {
-        if (read_at(file, shoff + (uint64_t)names_index * section_size, bytes, section_size, input->size) != STATUS_SUCCESS)
+        if (parser_read(input, shoff + (uint64_t)names_index * section_size, bytes, section_size) != STATUS_SUCCESS)
             goto invalid;
         names = decode_section(bytes, info->is_64bit, big);
         if (names.sh_type != 3 || !file_range_valid(names.sh_offset, names.sh_size, input->size))
@@ -132,7 +131,7 @@ int parse_elf_file(const InputFile *input, ELFInfo *info)
     }
     size_t name_bytes = 0;
     for (unsigned i = 0; i < info->e_shnum; ++i) {
-        if (read_at(file, shoff + (uint64_t)i * section_size, bytes, section_size, input->size) != STATUS_SUCCESS)
+        if (parser_read(input, shoff + (uint64_t)i * section_size, bytes, section_size) != STATUS_SUCCESS)
             goto invalid;
         SectionHeader h = decode_section(bytes, info->is_64bit, big);
         /*
@@ -159,7 +158,7 @@ int parse_elf_file(const InputFile *input, ELFInfo *info)
                 size_t chunk = remaining < sizeof(bytes) ? (size_t)remaining : sizeof(bytes);
                 scanned += chunk; name_bytes += chunk;
                 if (scanned > 4096 || name_bytes > 16u * 1024u * 1024u) goto invalid;
-                if (read_at(file, pos, bytes, chunk, input->size) != STATUS_SUCCESS) goto invalid;
+                if (parser_read(input, pos, bytes, chunk) != STATUS_SUCCESS) goto invalid;
                 for (size_t j = 0; j < chunk; ++j) {
                     if (!bytes[j]) { terminated = 1; break; }
                     if (stored < sizeof(info->section_names[i]) - 1)

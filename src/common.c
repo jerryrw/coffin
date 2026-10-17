@@ -127,6 +127,8 @@ static void hex_string(const uint8_t *bytes, size_t length, char *output)
  */
 int input_prepare(InputFile *input)
 {
+    memset(&input->budget_storage, 0, sizeof(input->budget_storage));
+    input->budget = &input->budget_storage;
     SHA256_CTX sha;
     MD5_CTX md5;
     unsigned char buffer[8192], sha_digest[32], md5_digest[16];
@@ -187,26 +189,70 @@ uint64_t read64_order(const unsigned char *p, int big)
 {
     return big ? ((uint64_t)read32_order(p, 1) << 32 | read32_order(p + 4, 1)) : decode64(p);
 }
+/* Report a budget failure once. Callers propagate STATUS_ERROR and free any
+ * partially built tables; a resource rejection is never a successful report. */
+static int parser_limit(ParserBudget *budget, const char *kind)
+{
+    if (!budget->exceeded)
+        fprintf(stderr, "Parser resource limit exceeded: %s\n", kind);
+    budget->exceeded = 1;
+    return STATUS_ERROR;
+}
+
+/* Charge a whole linear lookup before entering it. Repeated nested scans must
+ * not turn small metadata records into billions of comparisons. */
+int parser_lookup_work(const InputFile *input, uint64_t steps)
+{
+    ParserBudget *budget = input->budget;
+    if (budget) {
+        if (budget->exceeded || steps > PARSER_LOOKUP_STEPS - budget->lookup_steps)
+            return parser_limit(budget, "metadata lookup work");
+        budget->lookup_steps += steps;
+    }
+    return STATUS_SUCCESS;
+}
+
+int parser_read(const InputFile *input, uint64_t offset, void *buffer, size_t length)
+{
+    ParserBudget *budget = input->budget;
+    if (budget) {
+        if (budget->exceeded || budget->read_operations >= PARSER_READ_OPERATIONS ||
+            length > PARSER_METADATA_BYTES - budget->metadata_bytes)
+            return parser_limit(budget, "metadata reads");
+        ++budget->read_operations;
+        budget->metadata_bytes += length;
+    }
+    return read_at(input->file, offset, buffer, length, input->size);
+}
+
 /*
  * Ensure a heap array can hold needed elements, without changing its count.
  * void ** lets this helper update the caller's pointer when realloc moves it.
  * capacity is allocated slots; the caller separately tracks occupied slots.
  * Grow geometrically to avoid reallocating on every append. Bound multiplication
- * by the per-array byte budget, and keep the old allocation if realloc fails.
+ * by entry and byte budgets, and keep the old allocation if realloc fails.
  */
-int reserve_array(void **array, unsigned *capacity, unsigned needed, size_t item_size)
+int reserve_array(const InputFile *input, void **array, unsigned *capacity, unsigned needed, size_t item_size)
 {
-    const size_t budget = 64u * 1024u * 1024u;
-    if (!item_size || needed > budget / item_size) {
-        fprintf(stderr, "Report table exceeds the 64 MiB allocation budget\n");
+    const size_t budget = PARSER_TABLE_BYTES;
+    if (!item_size || needed > PARSER_TABLE_ENTRIES || needed > budget / item_size) {
+        fprintf(stderr, "Parser resource limit exceeded: table entries or allocation bytes\n");
         return STATUS_ERROR;
     }
     if (needed <= *capacity) return STATUS_SUCCESS;
+    size_t maximum = budget / item_size;
+    if (maximum > PARSER_TABLE_ENTRIES) maximum = PARSER_TABLE_ENTRIES;
     unsigned next = *capacity ? *capacity : 16;
-    while (next < needed && next <= (budget / item_size) / 2) next *= 2;
-    if (next < needed || next > budget / item_size) next = needed;
+    while (next < needed && next <= maximum / 2) next *= 2;
+    /* Saturate once instead of reallocating per record near the maximum. */
+    if (next < needed || next > maximum) next = (unsigned)maximum;
+    size_t growth = (size_t)(next - *capacity) * item_size;
+    if (input->budget && (input->budget->exceeded ||
+        growth > PARSER_TABLE_BYTES - input->budget->table_bytes))
+        return parser_limit(input->budget, "aggregate table allocation");
     void *grown = realloc(*array, (size_t)next * item_size);
     if (!grown) return STATUS_ERROR;
+    if (input->budget) input->budget->table_bytes += growth;
     *array = grown; *capacity = next;
     return STATUS_SUCCESS;
 }
@@ -264,7 +310,7 @@ int read_display_string(const InputFile *input, uint64_t offset, uint64_t size,
         size_t count = size - used < 64 ? (size_t)(size - used) : 64;
         if (count > sizeof(bytes) - used) count = sizeof(bytes) - used;
         if (*work > 16u * 1024u * 1024u || count > 16u * 1024u * 1024u - *work ||
-            read_at(input->file, offset + used, bytes + used, count, input->size) != STATUS_SUCCESS) return STATUS_ERROR;
+            parser_read(input, offset + used, bytes + used, count) != STATUS_SUCCESS) return STATUS_ERROR;
         *work += count;
         const unsigned char *end = memchr(bytes + used, 0, count);
         if (end) {

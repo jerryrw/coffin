@@ -337,3 +337,7 @@ if __name__ == '__main__':
     for name, data in fuzz_seeds().items():
         (target / name).write_bytes(data)
 
+    # Frozen regressions join deterministic mutations without regenerating them.
+    from regression_corpus import corpus_cases
+    for case, _, data in corpus_cases():
+        (target / ('regression-' + case['file'])).write_bytes(data)

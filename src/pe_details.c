@@ -88,7 +88,7 @@ static int rva_read(PEReader *r, uint64_t rva, void *out, size_t size)
 {
     uint64_t offset, available;
     if (map_rva(r, rva, size, &offset, &available) != STATUS_SUCCESS) return STATUS_ERROR;
-    return read_at(r->input->file, offset, out, size, r->input->size);
+    return parser_read(r->input, offset, out, size);
 }
 
 /* Strings must terminate within mapped bytes and the work limit. Escape control bytes. */
@@ -104,7 +104,7 @@ static int rva_string(PEReader *r, uint64_t rva, uint64_t bound, char out[256])
     if (map_rva(r, rva, 1, &offset, &available) != STATUS_SUCCESS) return STATUS_ERROR;
     if (available > bound) available = bound;
     size_t count = available < sizeof(bytes) ? (size_t)available : sizeof(bytes);
-    if (read_at(r->input->file, offset, bytes, count, r->input->size) != STATUS_SUCCESS)
+    if (parser_read(r->input, offset, bytes, count) != STATUS_SUCCESS)
         return STATUS_ERROR;
     unsigned char *end = memchr(bytes, 0, count);
     if (!end) return STATUS_ERROR;
@@ -167,7 +167,7 @@ static int import_symbols(PEReader *r, uint32_t table, const char *dll, int dela
                 return STATUS_ERROR;
             entry.hint = decode16(hint);
         }
-        if (reserve_array((void **)&r->info->imports, &r->info->import_capacity,
+        if (reserve_array(r->input, (void **)&r->info->imports, &r->info->import_capacity,
                           r->info->import_count + 1, sizeof(entry)) != STATUS_SUCCESS) return STATUS_ERROR;
         r->info->imports[r->info->import_count++] = entry;
         ++r->info->import_total;
@@ -256,7 +256,7 @@ static int add_export(PEReader *r, RVA_Data_Directory directory, uint32_t base,
     uint64_t end = (uint64_t)directory.VirtualAddress + directory.Size;
     if (rva >= directory.VirtualAddress && rva < end &&
         rva_string(r, rva, end - rva, entry.forwarder) != STATUS_SUCCESS) return STATUS_ERROR;
-    if (reserve_array((void **)&r->info->exports, &r->info->export_capacity,
+    if (reserve_array(r->input, (void **)&r->info->exports, &r->info->export_capacity,
                       r->info->export_count + 1, sizeof(entry)) != STATUS_SUCCESS) return STATUS_ERROR;
     r->info->exports[r->info->export_count++] = entry;
     ++r->info->export_total;
@@ -317,7 +317,7 @@ static int resource_read(PEReader *r, uint64_t relative, void *out, size_t size)
 {
     if (++r->resource_work > RESOURCE_WORK_LIMIT ||
         !file_range_valid(relative, size, r->resource_size)) return STATUS_ERROR;
-    return read_at(r->input->file, r->resource_offset + relative, out, size, r->input->size);
+    return parser_read(r->input, r->resource_offset + relative, out, size);
 }
 
 /*
@@ -449,7 +449,7 @@ static int resource_tree(PEReader *r, uint32_t relative, unsigned depth, const c
                 r->decoded_bytes += resource.size;
                 if (decode_resource_payload(r->input, &resource) != STATUS_SUCCESS) return STATUS_ERROR;
             } else snprintf(resource.decoded, sizeof(resource.decoded), "Preview skipped: aggregate 16 MiB decode budget; raw extraction available");
-            if (reserve_array((void **)&r->info->resources, &r->info->resource_capacity,
+            if (reserve_array(r->input, (void **)&r->info->resources, &r->info->resource_capacity,
                               r->info->resource_count + 1, sizeof(resource)) != STATUS_SUCCESS) return STATUS_ERROR;
             r->info->resources[r->info->resource_count++] = resource;
             ++r->info->resource_total;
@@ -471,8 +471,7 @@ static int prepare_reader(PEReader *r, const InputFile *input, PEInfo *info)
     if (info->size_of_headers > input->size) return STATUS_ERROR;
     for (unsigned i = 0; i < info->number_of_sections; ++i) {
         unsigned char section[40];
-        if (read_at(input->file, info->section_table_offset + (uint64_t)i * 40,
-                    section, 40, input->size) != STATUS_SUCCESS) return STATUS_ERROR;
+        if (parser_read(input, info->section_table_offset + (uint64_t)i * 40, section, 40) != STATUS_SUCCESS) return STATUS_ERROR;
         Mapping map = { decode32(section + 12), decode32(section + 20), decode32(section + 16) };
         if (map.size) r->maps[r->map_count++] = map;
     }

@@ -217,7 +217,15 @@ allocating them. Every `read_at` requires an exact read; short reads are errors.
 Valid byte ranges alone do not bound computation. A resource tree could cycle,
 and many sections could repeatedly reference the same bytes. Work/depth limits
 and entropy caching prevent these structures from requesting unlimited work.
-Limits are described in the main README.
+`input_prepare` initializes a `ParserBudget` owned by the input. Its pointer lets
+helpers update accounting even when they borrow a `const InputFile *`, just as
+reading a borrowed `FILE *` changes stream state. Do not copy a prepared
+`InputFile`: its budget pointer refers to its own storage. Parser reads use
+`parser_read`; streaming hash and entropy reads have separate policies.
+`reserve_array` charges allocation growth across all tables and universal slices.
+The budget is not refunded during an analysis. `parser_lookup_work` charges
+repeated ELF table scans before entering their loops. These helpers reject work
+before it would exceed the allowance. Limits are described in the main README.
 
 ## Cleanup and error handling
 
@@ -259,6 +267,9 @@ values to simplify or change when learning the code.
 | [tests/test_malformed.py](../tests/test_malformed.py) | Run the CLI, inspect reports, and verify rejection/extraction behavior |
 | [tests/fixtures.py](../tests/fixtures.py) | Build small binary images with known field locations |
 | [tests/fuzz_parser.c](../tests/fuzz_parser.c) | Send generated/mutated byte buffers through real parsing paths |
+| [tests/test_limits.c](../tests/test_limits.c) | Allocation, metadata I/O, and lookup budget boundaries |
+| [tests/test_corpus.py](../tests/test_corpus.py) | Frozen checksummed inputs, expected status, timeouts |
+| [tests/test_parser_limits.py](../tests/test_parser_limits.py) | Shared allocation budget across universal slices |
 | [tests/test_differential.py](../tests/test_differential.py) | Compare metadata against independent binary tools |
 | [tests/test_distribution.py](../tests/test_distribution.py) | Verify staging, archives, and version output without system writes |
 | [tests/run_fuzz.py](../tests/run_fuzz.py) | Preserve fuzz corpus, logs, and reproducible crash inputs |

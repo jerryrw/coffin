@@ -20,13 +20,12 @@
 int parse_pe_file(const InputFile *input, PEInfo *info)
 {
     unsigned char dos[64], coff[20], optional[112], section[40], signature[4];
-    FILE *file = input->file;
     memset(info, 0, sizeof(*info));
     escape_display(info->filename, sizeof(info->filename), (const unsigned char *)input->path, strlen(input->path));
     info->file_size = input->size;
     strcpy(info->sha256hashstring, input->sha256);
     strcpy(info->md5hashstring, input->md5);
-    if (read_at(file, 0, dos, sizeof(dos), input->size) != STATUS_SUCCESS ||
+    if (parser_read(input, 0, dos, sizeof(dos)) != STATUS_SUCCESS ||
         decode16(dos) != DOS_SIGNATURE) goto invalid;
     /*
      * DOS byte offset 60 holds e_lfanew, the file offset of the PE signature.
@@ -34,9 +33,9 @@ int parse_pe_file(const InputFile *input, PEInfo *info)
      */
     uint64_t pe = decode32(dos + 60);
     if (pe < sizeof(dos) || pe > INT32_MAX ||
-        read_at(file, pe, signature, sizeof(signature), input->size) != STATUS_SUCCESS ||
+        parser_read(input, pe, signature, sizeof(signature)) != STATUS_SUCCESS ||
         decode32(signature) != PE_SIGNATURE ||
-        read_at(file, pe + 4, coff, sizeof(coff), input->size) != STATUS_SUCCESS)
+        parser_read(input, pe + 4, coff, sizeof(coff)) != STATUS_SUCCESS)
         goto invalid;
     info->machine = decode16(coff);
     info->number_of_sections = decode16(coff + 2);
@@ -45,7 +44,7 @@ int parse_pe_file(const InputFile *input, PEInfo *info)
     uint16_t optional_size = decode16(coff + 16);
     uint64_t optional_offset = pe + 24;
     if (optional_size < 2 || !file_range_valid(optional_offset, optional_size, input->size) ||
-        read_at(file, optional_offset, optional, 2, input->size) != STATUS_SUCCESS)
+        parser_read(input, optional_offset, optional, 2) != STATUS_SUCCESS)
         goto invalid;
     info->magic = decode16(optional);
     if (info->magic != PE32_MAGIC && info->magic != PE32PLUS_MAGIC) {
@@ -60,7 +59,7 @@ int parse_pe_file(const InputFile *input, PEInfo *info)
      */
     size_t fixed = info->is_64bit ? 112 : 96;
     if (optional_size < fixed ||
-        read_at(file, optional_offset, optional, fixed, input->size) != STATUS_SUCCESS)
+        parser_read(input, optional_offset, optional, fixed) != STATUS_SUCCESS)
         goto invalid;
     info->size_of_code = decode32(optional + 4);
     info->entry_point = decode32(optional + 16);
@@ -71,7 +70,7 @@ int parse_pe_file(const InputFile *input, PEInfo *info)
     info->size_of_headers = decode32(optional + 60);
     unsigned char directory[8];
     for (unsigned i = 0; i < info->number_of_rva_directories; ++i) {
-        if (read_at(file, optional_offset + fixed + i * 8, directory, 8, input->size) != STATUS_SUCCESS)
+        if (parser_read(input, optional_offset + fixed + i * 8, directory, 8) != STATUS_SUCCESS)
             goto invalid;
         info->directories[i].VirtualAddress = decode32(directory);
         info->directories[i].Size = decode32(directory + 4);
@@ -85,11 +84,11 @@ int parse_pe_file(const InputFile *input, PEInfo *info)
     if (!file_range_valid(sections, (uint64_t)info->number_of_sections * 40, input->size))
         goto invalid;
     for (unsigned i = 0; i < info->number_of_sections; ++i) {
-        if (read_at(file, sections + (uint64_t)i * 40, section, sizeof(section), input->size) != STATUS_SUCCESS)
+        if (parser_read(input, sections + (uint64_t)i * 40, section, sizeof(section)) != STATUS_SUCCESS)
             goto invalid;
         uint32_t raw_size = decode32(section + 16), raw_offset = decode32(section + 20);
         if (raw_size && !file_range_valid(raw_offset, raw_size, input->size)) goto invalid;
-        if (reserve_array((void **)&info->sections, &info->section_capacity, i + 1, sizeof(*info->sections)) != STATUS_SUCCESS)
+        if (reserve_array(input, (void **)&info->sections, &info->section_capacity, i + 1, sizeof(*info->sections)) != STATUS_SUCCESS)
             goto invalid;
         memset(&info->sections[i], 0, sizeof(info->sections[i]));
         /*

@@ -22,7 +22,7 @@ static int slice_read(const InputFile *input, uint64_t base, size_t slice_size,
                       uint64_t offset, void *out, size_t size)
 {
     if (!file_range_valid(offset, size, slice_size)) return STATUS_ERROR;
-    return read_at(input->file, base + offset, out, size, input->size);
+    return parser_read(input, base + offset, out, size);
 }
 
 /*
@@ -132,14 +132,14 @@ static int parse_thin(const InputFile *input, MachOInfo *info, uint64_t base, si
                     (section.relocation_count &&
                      !file_range_valid(section.relocation_offset,
                                        (uint64_t)section.relocation_count * 8, slice_size))) goto invalid;
-                if (reserve_array((void **)&info->sections, &info->section_capacity,
+                if (reserve_array(input, (void **)&info->sections, &info->section_capacity,
                                   info->section_count + 1, sizeof(section)) != STATUS_SUCCESS) goto invalid;
                 info->sections[info->section_count++] = section;
                 ++info->section_total;
             }
         }
         {
-            if (reserve_array((void **)&info->load_commands, &info->command_capacity,
+            if (reserve_array(input, (void **)&info->load_commands, &info->command_capacity,
                               i + 1, sizeof(*info->load_commands)) != STATUS_SUCCESS) goto invalid;
             memset(&info->load_commands[i], 0, sizeof(*info->load_commands));
             info->load_commands[i].cmd = cmd; info->load_commands[i].cmdsize = size;
@@ -223,7 +223,7 @@ int parse_mach_file(const InputFile *input, MachOInfo *info)
 {
     unsigned char bytes[32];
     memset(info, 0, sizeof(*info));
-    if (read_at(input->file, 0, bytes, 8, input->size) != STATUS_SUCCESS) goto invalid;
+    if (parser_read(input, 0, bytes, 8) != STATUS_SUCCESS) goto invalid;
     uint32_t magic = decode32(bytes);
     int fat = magic == 0xbebafeca || magic == 0xcafebabe || magic == 0xbfbafeca || magic == 0xcafebabf;
     if (!fat) {
@@ -241,7 +241,7 @@ int parse_mach_file(const InputFile *input, MachOInfo *info)
         if (!info->slices) goto invalid;
         info->slice_count = count;
         for (unsigned i = 0; i < count; ++i) {
-            if (read_at(input->file, 8 + (uint64_t)i * width, bytes, width, input->size) != STATUS_SUCCESS)
+            if (parser_read(input, 8 + (uint64_t)i * width, bytes, width) != STATUS_SUCCESS)
                 goto invalid;
             uint32_t cpu = fat32(bytes, big), subtype = fat32(bytes + 4, big);
             uint64_t offset = wide ? fat64(bytes + 8, big) : fat32(bytes + 8, big);

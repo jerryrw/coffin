@@ -390,7 +390,7 @@ int decode_resource_payload(const InputFile *input, PEResource *resource)
     }
     unsigned char *bytes = malloc(resource->size);
     if (!bytes) return STATUS_ERROR;
-    if (read_at(input->file, resource->file_offset, bytes, resource->size, input->size) != STATUS_SUCCESS) {
+    if (parser_read(input, resource->file_offset, bytes, resource->size) != STATUS_SUCCESS) {
         free(bytes); return STATUS_ERROR;
     }
     size_t size = resource->size;
