@@ -15,6 +15,16 @@ FUZZ_CC ?= $(or $(firstword $(wildcard /opt/homebrew/opt/llvm/bin/clang /usr/loc
 else
 FUZZ_CC ?= clang
 endif
+FUZZ_LDFLAGS ?=
+# Some Linux systems have multiple GCC versions installed; Clang may pick one
+# without a matching libstdc++ linker script. Add g++'s libstdc++ directory so
+# -fsanitize=fuzzer can resolve its C++ runtime dependency reliably.
+ifeq ($(shell uname -s),Linux)
+FUZZ_STDCXX_SO := $(shell g++ -print-file-name=libstdc++.so 2>/dev/null)
+ifneq ($(FUZZ_STDCXX_SO),libstdc++.so)
+FUZZ_LDFLAGS += -L$(dir $(FUZZ_STDCXX_SO))
+endif
+endif
 # Python drives regression tests, fixtures, and fuzz orchestration. CPPFLAGS
 # are preprocessor options; -Iinclude lets #include find project headers.
 PYTHON ?= python3
@@ -142,10 +152,16 @@ bin/fuzz:
 # Compile the harness and library sources together with fuzz coverage and memory
 # checks. The shell fallback prints toolchain help and preserves a failed status.
 bin/fuzz/coffin-fuzz: tests/fuzz_parser.c $(LIBSRC) $(wildcard include/*.h) Makefile | bin/fuzz
-	$(FUZZ_CC) $(CPPFLAGS) -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer $(LIBSRC) tests/fuzz_parser.c $(LDLIBS) -o $@ || { \
+	$(FUZZ_CC) $(CPPFLAGS) -std=c11 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer $(FUZZ_LDFLAGS) $(LIBSRC) tests/fuzz_parser.c $(LDLIBS) -o $@ || { \
 		if [ "$$(uname -s)" = Darwin ]; then \
 			echo 'Fuzzer build failed. If libFuzzer is missing, install Homebrew LLVM: brew install llvm' >&2; \
 			echo 'Then run: make FUZZ_CC="$$(brew --prefix llvm)/bin/clang" fuzz' >&2; \
+		elif [ "$$(uname -s)" = Linux ]; then \
+			echo 'Fuzzer build failed. libFuzzer links C++ runtime libraries.' >&2; \
+			echo 'If the error mentions -lstdc++, install the GNU C++ runtime development package.' >&2; \
+			echo 'Debian/Ubuntu: sudo apt-get install g++' >&2; \
+			echo 'Fedora/RHEL:  sudo dnf install gcc-c++' >&2; \
+			echo 'If this still fails, pass the library dir explicitly, e.g. FUZZ_LDFLAGS="-L$$(dirname "$$(g++ -print-file-name=libstdc++.so)")".' >&2; \
 		fi; \
 		exit 1; \
 	}
