@@ -109,6 +109,17 @@ def readelf_programs(output):
     return programs
 
 
+def readelf_symbol_name(tail, dynamic):
+    """Remove readelf's dynamic-version annotation, preserving static names.
+
+    In .dynsym, readelf adds @VERSION from version metadata that Coffin does
+    not decode. In .symtab, that suffix is part of the stored symbol name.
+    The optional trailing version index, such as (2), is not part of a name.
+    """
+    name = tail.split()[0] if tail.strip() else ''
+    return name.split('@')[0] if dynamic else name
+
+
 def elf_reference(binary, oracle, path):
     expected = run(oracle, '-W', '-h', '-l', '-s', '-d', path)
     actual = run(binary, '--headers', '--program-headers', '--symbols', '--dependencies', path)
@@ -127,9 +138,7 @@ def elf_reference(binary, oracle, path):
     expected_symbols = re.findall(r'^\s*\d+:[ \t]+([0-9a-f]+)[ \t]+(\d+)[ \t]+\S+[ \t]+\S+[ \t]+\S+[ \t]+\S+[ \t]*([^\n]*)$', expected, re.M)
     assert len(symbol_rows) == len(expected_symbols), (path, len(symbol_rows), len(expected_symbols))
     for row, (value, size, tail) in zip(symbol_rows, expected_symbols):
-        # readelf annotates versioned names (foo@GLIBC_2.x); coffin reports the
-        # underlying string-table name and explicitly does not decode versions.
-        name = tail.split()[0].split('@')[0] if tail.strip() else ''
+        name = readelf_symbol_name(tail, dynamic=row[8].startswith('dynamic:'))
         assert row[1] == (name or '<unnamed>') and int(row[2], 0) == int(value, 16) and int(row[3]) == int(size), (path, row, name)
 
     for name in re.findall(r'\(NEEDED\).*?\[([^]]+)\]', expected):

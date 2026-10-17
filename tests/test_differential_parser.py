@@ -1,6 +1,6 @@
 """Regression coverage for differences between GNU and LLVM readelf output."""
 import unittest
-from test_differential import readelf_programs
+from test_differential import readelf_programs, readelf_symbol_name
 
 
 class ReadelfProgramsTests(unittest.TestCase):
@@ -22,6 +22,23 @@ class ReadelfProgramsTests(unittest.TestCase):
         self.assertEqual(readelf_programs(
             '  LOAD 0x000000 0x0000000100400000 0x0000000100400000 0x20 0x40     0x1000'),
             [('LOAD', 0, 0x100400000, 32, 64, '')])
+
+
+class ReadelfSymbolNamesTests(unittest.TestCase):
+    def test_dynamic_version_annotation(self):
+        self.assertEqual(readelf_symbol_name('free@GLIBC_2.2.5 (2)', True), 'free')
+        self.assertEqual(readelf_symbol_name('memcpy@@GLIBC_2.14', True), 'memcpy')
+
+    def test_static_versioned_name_is_literal(self):
+        self.assertEqual(readelf_symbol_name('free@GLIBC_2.2.5', False),
+                         'free@GLIBC_2.2.5')
+        self.assertEqual(readelf_symbol_name('memcpy@@GLIBC_2.14', False),
+                         'memcpy@@GLIBC_2.14')
+
+    def test_unversioned_and_unnamed_symbols(self):
+        for dynamic in (False, True):
+            self.assertEqual(readelf_symbol_name('main', dynamic), 'main')
+            self.assertEqual(readelf_symbol_name('  ', dynamic), '')
 
 
 if __name__ == '__main__':
