@@ -60,7 +60,7 @@ LIBSRC = $(filter-out src/main.c,$(SRC))
 
 # Phony targets are actions, not expected output files. "all" is the default
 # action because it is the first ordinary target in this Makefile.
-.PHONY: all default clean test sanitize fuzz fuzz-smoke samples differential install uninstall package valgrind leaks memory-check
+.PHONY: all default clean test sanitize fuzz fuzz-smoke samples differential install uninstall package valgrind leaks memory-check source-package homebrew deb
 all: $(TARGET)
 default: all
 
@@ -113,6 +113,7 @@ test: $(TARGET) $(BIN_DIR)/test-entropy $(BIN_DIR)/test-hashes $(BIN_DIR)/test-d
 	$(BIN_DIR)/test-limits
 	$(PYTHON) tests/test_malformed.py $(TARGET)
 	$(PYTHON) tests/test_distribution.py $(TARGET)
+	$(PYTHON) tests/test_packaging.py
 	$(PYTHON) tests/test_corpus.py $(TARGET)
 	$(PYTHON) tests/test_parser_limits.py $(TARGET)
 
@@ -209,3 +210,15 @@ uninstall:
 
 package: $(TARGET)
 	$(PYTHON) scripts/package_release.py $(TARGET)
+
+# Source packages include current source changes, never stale build objects.
+# Formula checksums refer to this exact archive, uploaded as a release asset.
+source-package:
+	$(PYTHON) scripts/package_source.py
+
+homebrew: source-package
+	$(PYTHON) scripts/package_homebrew.py dist/coffin-$(VERSION)-source.tar.gz
+
+# Debian builds require Linux packaging tools; no installation is performed here.
+deb:
+	$(PYTHON) scripts/package_deb.py

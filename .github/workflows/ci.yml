@@ -62,8 +62,56 @@ jobs:
             bin/valgrind/memory-logs/
           if-no-files-found: ignore
 
-  release-candidates:
+  # Build/install packages only after the full parser verification matrix passes.
+  # The Debian baseline is deliberately explicit; its glibc dependencies are
+  # calculated by debhelper rather than guessed in package metadata.
+  debian-package:
     needs: test
+    runs-on: ubuntu-latest
+    container: debian:bookworm-slim
+    timeout-minutes: 20
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Install Debian packaging tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates build-essential debhelper dpkg-dev python3
+      - uses: actions/checkout@v4
+      - run: make deb
+      - name: Install, exercise, remove, and reinstall the Debian package
+        run: python3 tests/test_deb.py dist/coffin_*_amd64.deb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: candidate-debian
+          path: |
+            dist/*.deb
+            dist/*.deb.sha256
+          if-no-files-found: error
+
+  homebrew-package:
+    needs: test
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - run: make homebrew
+      - name: Install, test, reinstall, and uninstall from a disposable tap
+        run: python3 tests/test_homebrew.py dist/coffin-*-source.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: candidate-homebrew
+          path: |
+            dist/coffin.rb
+            dist/*-source.tar.gz
+            dist/*-source.tar.gz.sha256
+          if-no-files-found: error
+
+  release-candidates:
+    needs: [test, debian-package, homebrew-package]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:

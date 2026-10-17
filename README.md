@@ -466,6 +466,19 @@ Sanitizer builds use separate `obj/sanitize` and `bin/sanitize` directories.
 `make clean` removes the selected build's objects, dependency files, executable,
 and unit-test binaries; use `make BUILD_DIR=obj/sanitize BIN_DIR=bin/sanitize clean` for that build.
 
+### Debian and Homebrew packages
+
+`make deb` builds a native `.deb` on Debian/Ubuntu with `build-essential`,
+`debhelper`, `dpkg-dev`, and `python3` installed. `make homebrew` creates a source
+archive and a Homebrew formula with its SHA-256 checksum. Both write to `dist/`.
+These commands prepare packages; they do not install or publish them.
+
+CI tests Debian installation/removal in a clean container and Homebrew source
+installation, formula tests, reinstallation, and removal in a temporary macOS
+tap. Package artifacts are downloadable from successful workflows. The
+[packaging guide](packaging/README.md) covers local commands, supported baselines,
+and the steps to publish a reviewed release and Homebrew tap.
+
 ### Memory leak checks
 
 On Linux, install Valgrind (`sudo apt-get install valgrind` on Debian/Ubuntu),

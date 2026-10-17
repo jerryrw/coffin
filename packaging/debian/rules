@@ -1,0 +1,21 @@
+#!/usr/bin/make -f
+# Debian supplies compiler/linker hardening flags. The project Makefile appends
+# its language standard and include paths while preserving these environment flags.
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+include /usr/share/dpkg/buildflags.mk
+export CFLAGS CPPFLAGS LDFLAGS
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	$(MAKE) all
+
+override_dh_auto_test:
+	$(MAKE) test
+
+override_dh_auto_install:
+	$(MAKE) install DESTDIR=$(CURDIR)/debian/coffin PREFIX=/usr
+
+override_dh_strip:
+	dh_strip --no-automatic-dbgsym

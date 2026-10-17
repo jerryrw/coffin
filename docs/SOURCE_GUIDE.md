@@ -305,3 +305,14 @@ C/Python comments; their explanations belong here and in the sample README.
 Release preparation is described in [RELEASING.md](RELEASING.md). The VERSION
 file feeds a compiler macro; install/uninstall use a staging prefix, and
 `scripts/package_release.py` creates archives without tagging or publishing.
+
+## Distribution packaging
+
+`make deb` exports source into a disposable directory and runs Debian's
+`dpkg-buildpackage`. Debhelper's rules run tests, stage `/usr/bin/coffin`, and
+compute runtime library dependencies. `make homebrew` creates a normalized
+source archive and renders a formula using its actual SHA-256 checksum.
+`tests/test_packaging.py` verifies source contents and checksums without installs.
+The explicit Debian/Homebrew installation tests run in dedicated CI jobs; they
+remove only packages and temporary taps they created. See
+[packaging/README.md](../packaging/README.md) for commands and release boundaries.
