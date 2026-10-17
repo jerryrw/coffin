@@ -513,6 +513,9 @@ It also checks frozen ELF width/byte-order/extended-numbering cases, literal
 versioned static symbols, PE directory samples, and rejection of unambiguously
 truncated headers. Missing optional tools are reported; CI explicitly requires
 platform tools. GNU and LLVM readelf text-format differences have dedicated tests.
+When older LLVM omits extended-count program headers, that table is compared
+against GNU readelf on the original file, with an explicit note. If GNU readelf
+is unavailable, the check fails with upgrade/install instructions.
 
 The [permanent regression corpus](tests/corpus/README.md) contains checked-in
 inputs with SHA-256 checksums, expected status, and an explanation per case.

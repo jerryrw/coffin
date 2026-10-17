@@ -111,6 +111,26 @@ def readelf_programs(output):
     return programs
 
 
+def reference_programs(output, oracle, path):
+    """Keep extended-count checks on LLVM versions without PN_XNUM support.
+
+    Older LLVM can exit successfully but omit the program table for e_phnum
+    65535. GNU readelf still checks the ORIGINAL file; no counts are patched and
+    no Coffin rows are excluded. LLVM continues checking its other metadata.
+    Upstream support: https://github.com/llvm/llvm-project/pull/165278
+    """
+    programs = readelf_programs(output)
+    extended = re.search(r'^\s*Number of program headers:\s*65535(?:\s|$)', output, re.M)
+    if programs or not extended or not Path(oracle).name.startswith('llvm-readelf'):
+        return programs
+    fallback = tool('readelf')
+    if not fallback:
+        raise AssertionError(f'{path}: LLVM omitted extended-count program headers; '
+                             'install GNU readelf or upgrade LLVM')
+    print(f'NOTE {Path(path).name}: GNU readelf checks extended-count program headers omitted by {oracle}')
+    return readelf_programs(run(fallback, '-W', '-l', path))
+
+
 def readelf_symbol_name(tail, dynamic):
     """Remove readelf's dynamic-version annotation, preserving static names.
 
@@ -127,7 +147,7 @@ def elf_reference(binary, oracle, path):
     actual = run(binary, '--headers', '--program-headers', '--symbols', '--dependencies', path)
     entry = int(re.search(r'Entry point address:\s*(0x[0-9a-fA-F]+)', expected).group(1), 0)
     assert f'VA 0x{entry:016X}' in actual if re.search(r'Class:\s+ELF64', expected) else f'VA 0x{entry:08X}' in actual
-    expected_programs = readelf_programs(expected)
+    expected_programs = reference_programs(expected, oracle, path)
     program_report = run(binary, '--program-headers', path)
     found = rows(program_report)
     assert len(found) == len(expected_programs), (path, found, expected_programs)
