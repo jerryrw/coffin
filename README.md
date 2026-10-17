@@ -6,7 +6,8 @@ permissions for PE, ELF, and Mach-O files. All formats include whole-file and
 section entropy. PE reports include imports, exports, decoded resource previews,
 and raw resource extraction. ELF32 and ELF64 are supported in either byte order,
 along with thin and universal Mach-O files. Reports include complete tables, and resource extraction can reconstruct
-standalone icon and cursor files.
+standalone icon and cursor files. ELF and Mach-O also report declared library
+dependencies and symbols.
 
 The project grew out of learning PE internals and malware analysis, with the aim
 of making executable structure easier to explore from a Linux terminal. It is
@@ -81,6 +82,7 @@ their raw values; flags retain their hexadecimal representation.
 | `--headers` | Format-specific header values |
 | `--sections` | PE, ELF, or Mach-O section tables |
 | `--imports`, `--exports`, `--resources` | Select PE tables; imports include ordinary and delay-load symbols |
+| `--dependencies`, `--symbols` | Select ELF/Mach-O library and symbol tables |
 | `--program-headers` | Select ELF program headers |
 | `--load-commands` | Select Mach-O load commands and segment ranges |
 | `--observations` | Select structural observations |
@@ -89,6 +91,7 @@ their raw values; flags retain their hexadecimal representation.
 | `--verbose` | Add full field details after the compact report and progress on stderr |
 | `--code-page N` | Fallback code page for resource text without a declared code page |
 | `--extract-resources NEW_DIRECTORY` | Extract PE resource payloads and reconstruct supported icons/cursors |
+| `--version` | Show the version embedded at build time |
 | `--help` | Show command-line help |
 
 Detail selectors can be combined. When any is supplied, only those detail groups
@@ -102,6 +105,7 @@ bin/coffin --imports --exports hello-pe64.exe
 bin/coffin --resources --no-preview testexecutable.exe
 bin/coffin --program-headers hello-linux-arm64
 bin/coffin --load-commands hello-mach-universal
+bin/coffin --dependencies --symbols hello-mach-universal
 bin/coffin --verbose testexecutable.exe
 ```
 
@@ -128,8 +132,8 @@ Use `--` before a filename beginning with a dash, for example
 | Format | Supported input | Report |
 | --- | --- | --- |
 | PE | PE32 and PE32+ images, little-endian | COFF and optional headers, sections, permissions, UTC timestamp, entropy, imports, exports, resource tree and decoded previews; raw extraction |
-| ELF | ELF32 and ELF64, either byte order, including extended numbering | Program and section headers, section names, flags, permissions and entropy |
-| Mach-O | Thin 32/64-bit images in either byte order; universal FAT32/FAT64 containers | Header, load commands, segments, individual sections, names, permission flags and entropy |
+| ELF | ELF32 and ELF64, either byte order, including extended numbering | Program and section headers, section names, flags, permissions, entropy, dependencies and static/dynamic symbols |
+| Mach-O | Thin 32/64-bit images in either byte order; universal FAT32/FAT64 containers | Header, load commands, segments, individual sections, names, permission flags, entropy, linked libraries and nlist symbols |
 
 ### Linux ARM
 
@@ -215,6 +219,41 @@ names accept up to 4,096 UTF-16 code units. Parsing is bounded by 100,000 RVA
 lookups, 4,096 resource reads, a resource depth of 16, and a resource display path
 of 767 bytes. Malformed directory structures and inputs exceeding these work
 limits fail with an error rather than producing a partial report.
+
+### ELF and Mach-O linkage
+
+`--dependencies` lists ELF `DT_NEEDED` names and Mach-O load/weak/re-export/lazy/
+upward library commands. Mach-O image-ID commands are labeled `image-id`, not
+runtime dependencies; declared current/compatible versions and raw command IDs
+are retained. Nothing resolves these paths against the inspection host or loads
+libraries. Universal Mach-O reports each slice's declarations separately.
+
+`--symbols` shows ELF static/dynamic symbol tables with names, values, sizes,
+section indices, binding/type/visibility numbers, table identity, and whether a
+symbol is defined. Mach-O `LC_SYMTAB` entries retain values, section indices,
+raw type/description bits, external/local roles, and indirect-symbol target names.
+These are table entries, not demangled names or an enumeration of all runtime
+bindings. ELF symbol-version tables are not decoded. Mach-O bind bytecode, chained fixups, and export tries are not decoded.
+
+ELF section tables provide exact symbol counts. Without sections, `PT_DYNAMIC`
+still supplies dependencies; SysV or GNU hash metadata can recover the dynamic
+symbol count. If that count cannot be recovered, the report explicitly says
+symbols are unavailable. Mach-O without `LC_SYMTAB` is labeled similarly.
+ELF extended symbol section indices use `SHT_SYMTAB_SHNDX` companions.
+Linkage work is bounded to 100000 ELF table entries or Mach-O symbols/library
+records (each category); strings must terminate within 4096 bytes and share a
+16 MiB string-read/extended-index-scan work allowance per image. Limits fail
+explicitly instead of silently truncating tables; display strings remain bounded.
+
+### Terminal-safe output
+
+Untrusted filenames, section/segment names, dependency names, and symbol names
+escape control bytes, backslashes, and non-ASCII bytes as `\xNN`. This makes
+ANSI escape sequences and invalid byte encodings visible in compact and verbose
+reports and path diagnostics. These display escapes do not change input bytes,
+hashes, decoded offsets, or extracted resource payloads. Resource Unicode names
+and previews retain readable text while escaping control and direction marks.
+Bounded display fields use an ellipsis when shortened.
 
 ### Legacy text encodings
 
@@ -307,6 +346,13 @@ Empty PE sections, ELF NULL/NOBITS sections, and Mach-O zero-fill sections show
 `N/A`, rather than a measured zero. File byte counts accompany the measurements;
 ELF NOBITS and Mach-O zero-fill size fields describe memory, not measured bytes.
 
+Section entropy is computed only when the selected report needs it. PE summary/
+observation reports need it for their high-entropy check; focused headers/imports/
+exports/resources reports skip it. ELF/Mach-O summaries and non-section selections
+skip section measurements. Whole-file entropy remains in every report, and
+`--entropy-window` always performs its explicitly requested windows. With
+`--verbose`, the `Entropy work` line shows actual bytes read and cached ranges.
+
 Use windows to inspect regions that a section average might hide:
 
 ```sh
@@ -333,6 +379,23 @@ measurements together. Exceeding either limit fails explicitly instead of
 printing incomplete measurements. These limits bound entropy work, not the
 separate hashing and parser passes. Entropy uses an 8 KiB read buffer and a
 bounded cache; it never allocates a buffer the size of a section.
+
+## Install and release preparation
+
+```sh
+bin/coffin --version
+make install PREFIX="$HOME/.local"
+make uninstall PREFIX="$HOME/.local"
+make package
+```
+
+The version comes from [VERSION](VERSION). Installation supports `PREFIX`,
+`BINDIR`, `DOCDIR`, and `DESTDIR`; the default prefix is `/usr/local`. Install
+copies the executable and documentation; uninstall removes just those files.
+`make package` creates an OS/CPU-specific archive and checksum in `dist/`.
+See the [changelog](CHANGELOG.md) and [release checklist](docs/RELEASING.md),
+including Linux/macOS verification and the tag-gated release-candidate workflow.
+Preparing these files does not publish a release.
 
 ## Development
 
@@ -395,11 +458,34 @@ Sanitizer builds use separate `obj/sanitize` and `bin/sanitize` directories.
 `make clean` removes the selected build's objects, dependency files, executable,
 and unit-test binaries; use `make BUILD_DIR=obj/sanitize BIN_DIR=bin/sanitize clean` for that build.
 
+### Memory leak checks
+
+On Linux, install Valgrind (`sudo apt-get install valgrind` on Debian/Ubuntu),
+then run `make valgrind`. On macOS, run `make leaks` to use Apple's `leaks`
+command. `make memory-check` selects the host's target. These optional targets
+use separate debug builds and first run the normal functional tests.
+
+Each target checks the hash, entropy, and display unit programs, all root sample
+executables, synthetic format/resource fixtures, and truncated inputs. A deliberate
+leak verifies that the checker actually detects leaks before checking Coffin.
+Logs are saved in `bin/valgrind/memory-logs/` or `bin/leaks/memory-logs/`;
+any detected leak or checker failure fails the target. Valgrind also checks invalid
+accesses and uninitialized values. Apple's `leaks` checks unreachable allocations;
+continue using `make sanitize` for invalid accesses and undefined behavior.
+These runs cover exercised paths and complement fuzzing rather than proving
+all possible inputs leak-free.
+
+For interactive macOS investigation, Instruments provides Leaks and Allocations
+instruments. Process-inspection restrictions may require running the command
+outside a sandbox. The target fails if its deliberate-leak check cannot run.
+Valgrind itself does not support Apple Silicon macOS.
+
 ### Regression tests and sanitizers
 
 ```sh
 make test
 make sanitize
+make differential
 make fuzz-smoke
 ```
 
@@ -409,6 +495,22 @@ binary inputs around padding, block, and 8 KiB read boundaries. They exercise
 unaligned buffers, one-shot and fragmented updates, deterministic varying chunk
 sizes, zero-length NULL updates, and context reinitialization. The same tests run
 under ASan/UBSan with `make sanitize`.
+
+Distribution tests also verify version output, install/uninstall inside a
+temporary staging directory, archive membership, executable bytes, and checksums.
+`make differential` compares the included samples against available GNU readelf,
+LLVM readelf/readobj, and macOS otool: section locations/sizes, architecture,
+permissions, entry points, imports, symbols, and linked-library declarations.
+Missing optional tools are reported; CI explicitly requires platform tools.
+
+To measure focused versus section reporting on a large input:
+
+```sh
+python3 tests/benchmark_reports.py bin/coffin /path/to/large-executable --runs 5
+```
+
+The benchmark reports median elapsed times and entropy read counters. Timing
+results depend on the input and filesystem cache; they are not pass/fail tests.
 
 Regression tests cover bundled samples and hashes, malformed headers and file
 ranges, reporting limits, PE optional-header padding, known entropy values,
@@ -466,12 +568,17 @@ root-level Hello World samples, and synthetic fixtures covering directories,
 payloads, sections, and universal containers. It stores its log and crash
 artifacts under `bin/fuzz/`. Increase `--runs` for a longer run. Inputs are capped at 1 MiB for fuzzing only.
 Reproduce a libFuzzer crash with `bin/fuzz/coffin-fuzz path/to/crash-artifact`,
-then add a minimized regression case to `tests/test_malformed.py`.
+then add a minimized regression case to `tests/test_malformed.py`. The
+[release/fuzzing guide](docs/RELEASING.md#longer-fuzzing-and-failure-follow-up)
+explains minimization and the separate 30-minute daily fuzz workflow, retained
+corpus, and diagnostic artifacts. For a timed local run, use `--seconds 1800`
+instead of `--runs`; both limits may be supplied to stop at the first one reached.
 
 ### Continuous integration
 
 GitHub Actions runs builds, regression tests, sanitizers, and mutation checks on
-Linux and macOS, plus coverage-guided fuzzing on Linux. CI rebuilds the ELF and
+Linux and macOS, independent-tool comparisons, and coverage-guided fuzzing on
+Linux. Extended daily fuzzing runs separately to keep push/PR checks short. CI rebuilds the ELF and
 PE samples on Linux and the thin/universal Mach-O samples on macOS before
 running the tests. Linux CI installs QEMU user-mode emulators and checks that both
 ARM Hello World binaries print the expected message and exit successfully. Failure diagnostics are uploaded as workflow artifacts.
@@ -494,3 +601,9 @@ Licensed under the [MIT License](License).
 
 - [Microsoft PE/COFF specification](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format)
 - [Apple Mach-O structure definitions](https://github.com/apple-oss-distributions/cctools/blob/main/include/mach-o/loader.h)
+
+Additional linkage references:
+
+- [ELF dynamic linking](https://gabi.xinuos.com/v42/elf/08-dynamic.html)
+- [ELF symbol tables](https://gabi.xinuos.com/v42/elf/05-symtab.html)
+- [Apple nlist definitions](https://github.com/apple-oss-distributions/xnu/blob/main/EXTERNAL_HEADERS/mach-o/nlist.h)

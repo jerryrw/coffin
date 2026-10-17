@@ -11,6 +11,7 @@
 
 #include <stdint.h>
 #include "common.h"
+#include "linkage.h"
 
 // ELF Header structure (simplified, based on standard ELF)
 typedef struct
@@ -75,6 +76,12 @@ typedef struct
 // ELF Info structure
 typedef struct
 {
+    /* These arrays are owned by the result and released by free_*_info.
+     * ELF symbols include static/dynamic tables; Mach-O uses LC_SYMTAB. */
+    Dependency *dependencies;
+    BinarySymbol *symbols;
+    unsigned dependency_count, dependency_capacity, symbol_count, symbol_capacity;
+    int symbols_unavailable;
     char filename[256];
     size_t file_size;
     char sha256hashstring[65];
@@ -108,6 +115,7 @@ typedef struct
  */
 // Function declarations
 void free_elf_info(ELFInfo *info);
+int parse_elf_details(const InputFile *input, ELFInfo *info);
 int parse_elf_file(const InputFile *input, ELFInfo *elf_info);
 void print_elf_info(const ELFInfo *elf_info);
 

@@ -23,6 +23,7 @@ when the host or an installed emulator supports them.
 | [src/report.c](../src/report.c) | Turning stored results into tables and selecting report groups |
 | [src/elfparser.c](../src/elfparser.c) | Two integer widths, two byte orders, and string-table references |
 | [src/machparser.c](../src/machparser.c) | Variable-length commands and universal-file slices |
+| [src/elf_details.c](../src/elf_details.c), [src/mach_details.c](../src/mach_details.c) | Bounded dependency/symbol tables and sectionless dynamic metadata |
 | [src/pe_details.c](../src/pe_details.c) | Address mapping, terminated tables, and resource-tree recursion |
 | [src/resource_payload.c](../src/resource_payload.c) | Text conversion, variable records, and bounded previews |
 | [src/resource_image.c](../src/resource_image.c), [src/resource_extract.c](../src/resource_extract.c) | Constructing new binary files and managing output handles |
@@ -133,7 +134,8 @@ and may contain zeros anywhere. Use `memcmp` for fixed-length binary comparisons
 `strcmp` requires terminated strings.
 
 A PE section name occupies eight disk bytes. It may have no terminator, so the
-normalized result reserves nine bytes and starts zeroed before copying eight.
+normalized result reserves up to four ASCII display characters per raw byte
+plus a terminator. The parser escapes control, backslash, and non-ASCII bytes.
 SHA-256's 32 raw digest bytes need 64 hexadecimal characters plus one terminating
 zero when displayed. MD5's 16 raw bytes need 33 display-buffer bytes.
 
@@ -257,6 +259,8 @@ values to simplify or change when learning the code.
 | [tests/test_malformed.py](../tests/test_malformed.py) | Run the CLI, inspect reports, and verify rejection/extraction behavior |
 | [tests/fixtures.py](../tests/fixtures.py) | Build small binary images with known field locations |
 | [tests/fuzz_parser.c](../tests/fuzz_parser.c) | Send generated/mutated byte buffers through real parsing paths |
+| [tests/test_differential.py](../tests/test_differential.py) | Compare metadata against independent binary tools |
+| [tests/test_distribution.py](../tests/test_distribution.py) | Verify staging, archives, and version output without system writes |
 | [tests/run_fuzz.py](../tests/run_fuzz.py) | Preserve fuzz corpus, logs, and reproducible crash inputs |
 | [tests/build_samples.py](../tests/build_samples.py) | Optional cross-compilation of known-source executable samples |
 | [.github/workflows/ci.yml](../.github/workflows/ci.yml) | Run the build/test workflow on Linux and macOS |
@@ -286,3 +290,7 @@ more specialized than ordinary C functions. Its manifest hashes source text as
 well as sample bytes, so even a comment-only source edit changes the recorded
 source checksum. JSON manifests and executable fixtures cannot contain ordinary
 C/Python comments; their explanations belong here and in the sample README.
+
+Release preparation is described in [RELEASING.md](RELEASING.md). The VERSION
+file feeds a compiler macro; install/uninstall use a staging prefix, and
+`scripts/package_release.py` creates archives without tagging or publishing.

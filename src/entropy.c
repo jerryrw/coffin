@@ -47,7 +47,7 @@ double calculate_entropy(const unsigned char *buffer, size_t size)
 void analyze_entropy(const unsigned char *buffer, size_t size, const char *description)
 {
     double value = calculate_entropy(buffer, size);
-    printf("Entropy analysis for %s: ", description ? description : "buffer");
+    fputs("Entropy analysis for ", stdout); print_escaped(stdout, description ? description : "buffer"); fputs(": ", stdout);
     if (isnan(value)) puts("N/A (no measured bytes)");
     else printf("%.4f bits/byte across %zu bytes\n", value, size);
     puts("Byte-frequency entropy does not establish randomness, compression, encryption, or maliciousness.");

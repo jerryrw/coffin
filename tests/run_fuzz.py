@@ -6,6 +6,7 @@
 
 """Seed libFuzzer from bundled samples; retain its corpus, log, and crash artifacts."""
 import argparse
+from collections import deque
 from pathlib import Path
 import shutil
 import subprocess
@@ -13,8 +14,14 @@ from fixtures import fuzz_seeds
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('binary', type=Path)
-parser.add_argument('--runs', type=int, default=1000)
+parser.add_argument('--runs', type=int)
+parser.add_argument('--seconds', type=int, help='optional wall-clock budget for longer CI runs')
 args = parser.parse_args()
+if (args.runs is not None and args.runs < 1) or (args.seconds is not None and args.seconds < 1):
+    parser.error('--runs and --seconds must be positive')
+# A timed run without an explicit count keeps mutating until its time budget.
+runs = args.runs if args.runs is not None else (-1 if args.seconds else 1000)
+limits = [f'-max_total_time={args.seconds}'] if args.seconds else []
 root = Path(__file__).resolve().parents[1]
 binary = args.binary.resolve()
 work = binary.parent
@@ -33,10 +40,13 @@ log = work / 'fuzz.log'
 # Combine stdout/stderr into one diagnostic log. The limits bound each input's
 # size and execution time; --runs chooses how many mutations libFuzzer attempts.
 with log.open('w') as output:
-    result = subprocess.run([str(binary), str(corpus), f'-runs={args.runs}',
+    result = subprocess.run([str(binary), str(corpus), f'-runs={runs}', *limits,
                              '-max_len=1048576', '-timeout=5',
                              f'-artifact_prefix={artifacts}/'],
                             stdout=output, stderr=subprocess.STDOUT)
-print('\n'.join(log.read_text(errors='replace').splitlines()[-12:]))
+# A long scheduled run can produce a large log. Keep only the final lines in
+# memory while leaving the complete file available as a diagnostic artifact.
+with log.open(errors='replace') as lines:
+    print(''.join(deque(lines, maxlen=12)).rstrip())
 print(f'Fuzzer log: {log}')
 raise SystemExit(result.returncode)

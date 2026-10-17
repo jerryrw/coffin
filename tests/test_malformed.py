@@ -5,6 +5,7 @@
 # Temporary directories isolate each case and are removed automatically.
 
 """Run against a freshly built CLI, preferably with ASan and UBSan enabled."""
+from linkage_fixtures import elf_linkage, mach_linkage
 import hashlib
 import json
 import math
@@ -219,9 +220,10 @@ class ParserTests(unittest.TestCase):
             header = struct.pack('<8I', 0xfeedfacf, 0x1000007, 3, 2, 1, 8, 0, 0)
             self.run_file(header + struct.pack('<2I', 2, size), False)
         header = struct.pack('<8I', 0xfeedfacf, 0x1000007, 3, 2, 17, 136, 0, 0)
-        commands = struct.pack('<2I', 2, 8) * 16
+        # Use an unknown generic command, not an invalid eight-byte LC_SYMTAB.
+        commands = struct.pack('<2I', 0x1234, 8) * 16
         self.run_file(header + commands + struct.pack('<2I', 2, 0), False)
-        self.run_file(header + commands + struct.pack('<2I', 2, 8), True)
+        self.run_file(header + commands + struct.pack('<2I', 0x1234, 8), True)
 
     # Use 17 entries to catch the former 16-row reporting cap in every format.
     # A later out-of-bounds entry must still be validated, not skipped after the cap.
@@ -252,7 +254,7 @@ class ParserTests(unittest.TestCase):
         result = self.run_file(data + optional + bytes(17 * 40), True)
         self.assertNotIn('omitted', result.stdout)
         header = struct.pack('<8I', 0xfeedfacf, 0x1000007, 3, 2, 17, 136, 0, 0)
-        result = self.run_file(header + struct.pack('<2I', 2, 8) * 17, True)
+        result = self.run_file(header + struct.pack('<2I', 0x1234, 8) * 17, True)
         self.assertNotIn('omitted', result.stdout)
 
     # Use identical segment intentions in thin 32/64-bit layouts and verify the
@@ -830,6 +832,126 @@ class ParserTests(unittest.TestCase):
         self.assertIn('[ENTRY]', self.report_file(data, '--summary').stdout)
 
     # Reject empty, truncated-signature, and unknown files without unsafe reads.
+    # Linkage fixtures cover both disk widths/orders independently of SDK structs.
+    def test_linkage_tables(self):
+        for wide in (False, True):
+            for big in (False, True):
+                for stripped, gnu in ((False, False), (True, False), (True, True)):
+                    data = elf_linkage(wide, big, stripped, gnu)
+                    result = self.report_file(data, '--dependencies', '--symbols')
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    for name in ('libsample.so', 'imported', 'exported', 'GLOBAL(1)', 'undefined', 'defined'):
+                        self.assertIn(name, result.stdout)
+                    self.assertIn('ELF symbols (3 entries)', result.stdout)
+                    self.assertNotIn('ELF sections (', result.stdout)
+                    self.run_file(data[:-1], False)
+                extended = self.report_file(elf_linkage(wide, big, extended_indices=True), '--symbols')
+                self.assertEqual(extended.returncode, 0, extended.stderr)
+                self.assertRegex(extended.stdout, r'exported[^\n]+\| 3 \| GLOBAL')
+                data = mach_linkage(wide, big)
+                result = self.report_file(data, '--dependencies', '--symbols')
+                self.assertEqual(result.returncode, 0, result.stderr)
+                for name in ('libExample.dylib', 'weak', '_imported', '_alias', '-> _target', 'Mach-O symbols (2 entries)'):
+                    self.assertIn(name, result.stdout)
+                self.run_file(data[:-1], False)
+                # An unterminated command name must not scan into the next command.
+                invalid = bytearray(data)
+                command = 32 if wide else 28
+                e = '>' if big else '<'
+                size = struct.unpack_from(e + 'I', invalid, command + 4)[0]
+                invalid[command + 24:command + size] = b'A' * (size - 24)
+                self.run_file(invalid, False)
+        # A real macOS executable includes loader-declared libraries and nlist symbols.
+        result = self.report_file((ROOT / 'hello-mach-universal').read_bytes(), '--dependencies', '--symbols')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('libSystem.B.dylib', result.stdout)
+        self.assertIn('_main', result.stdout)
+
+    def test_terminal_safe_output(self):
+        elf = bytearray(elf_variant())
+        pos = elf.index(b'.text')
+        elf[pos:pos + 5] = b'\x1b[2Jx'
+        mach = bytearray(mach_sections(True))
+        mach[32 + 8:32 + 8 + 16] = b'\x1b[31mBAD' + bytes(8)
+        mach[32 + 72:32 + 72 + 16] = b'\x1b[31mBAD' + bytes(8)
+        pe = pe_details()
+        section = 64 + 24 + 96 + 24
+        pe[section:section + 8] = b'\x1b[31mBAD'
+        for image in (elf, mach, pe):
+            for options in ([], ['--verbose'], ['--sections']):
+                result = self.report_file(image, *options)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertNotIn('\x1b', result.stdout)
+                self.assertIn('\\x1B', result.stdout)
+        # Unicode resource text stays readable, but direction controls are visible.
+        controls = '\u061c\u200e\u200f\u202e\u2066'
+        image = resource_payload(controls.encode('utf-8'))
+        struct.pack_into('<H', image, 512 + 0x490, len(controls))
+        encoded = controls.encode('utf-16le')
+        image[512 + 0x492:512 + 0x492 + len(encoded)] = encoded
+        result = self.report_file(image, '--resources')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for control in controls:
+            self.assertNotIn(control, result.stdout)
+        self.assertIn('\\u061C', result.stdout)
+        self.assertIn('\\u200E', result.stdout)
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'evil\n\x1b[2J\u202ename'
+            path.write_bytes(elf_variant())
+            for exists in (True, False):
+                if not exists:
+                    path.unlink()
+                result = subprocess.run([BINARY, '--verbose', str(path)], capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0 if exists else 1)
+                self.assertNotIn('\x1b', result.stdout + result.stderr)
+                self.assertNotIn('\u202e', result.stdout + result.stderr)
+                self.assertIn('evil\\x0A\\x1B', result.stdout + result.stderr)
+
+    def test_selective_entropy_work(self):
+        data = pe_details(True)
+        for selector in ('--headers', '--imports', '--exports', '--resources'):
+            result = self.report_file(data, '--verbose', selector)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(f'Entropy work: {len(data)} bytes read | 1 cached ranges', result.stdout)
+        result = self.report_file(data, '--verbose', '--sections')
+        self.assertIn(f'Entropy work: {len(data) + 4096} bytes read', result.stdout)
+        for data in (elf_variant(), mach_sections(True)):
+            result = self.report_file(data, '--verbose', '--summary')
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(f'Entropy work: {len(data)} bytes read | 1 cached ranges', result.stdout)
+
+    def test_linkage_invalid_tables(self):
+        for wide in (False, True):
+            for big in (False, True):
+                e = '>' if big else '<'
+                data = elf_linkage(wide, big)
+                eh, sh = (64, 64) if wide else (52, 40)
+                # Symbol-table sh_link must identify a real string table.
+                invalid = bytearray(data)
+                struct.pack_into(e + 'I', invalid, eh + 2 * sh + (40 if wide else 24), 0)
+                self.run_file(invalid, False)
+                # An invalid symbol name must not read past its string table.
+                invalid = bytearray(data)
+                symbol_offset = struct.unpack_from(e + ('Q' if wide else 'I'), data, eh + 2 * sh + (24 if wide else 16))[0]
+                struct.pack_into(e + 'I', invalid, symbol_offset, 0xffffffff)
+                self.run_file(invalid, False)
+                mach = mach_linkage(wide, big)
+                header = 32 if wide else 28
+                command_size = struct.unpack_from(e + 'I', mach, header + 4)[0]
+                for offset, value in ((header + 8, 4), (header + command_size + 12, 100001),
+                                      (header + command_size + 16, 0xfffffff0)):
+                    invalid = bytearray(mach)
+                    struct.pack_into(e + 'I', invalid, offset, value)
+                    self.run_file(invalid, False)
+        # Dynamic dependencies remain available when no hash gives a symbol count.
+        data = bytearray(elf_linkage(True, False, True))
+        dynamic_offset = struct.unpack_from('<Q', data, 64 + 56 + 8)[0]
+        struct.pack_into('<Q', data, dynamic_offset + 5 * 16, 0x70000000)
+        result = self.report_file(data, '--dependencies', '--symbols')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('libsample.so', result.stdout)
+        self.assertIn('Symbols unavailable', result.stdout)
+
     def test_short_files(self):
         for data in (b'', b'MZ00', b'\x7fELF', b'\xcf\xfa\xed\xfe', b'????'):
             self.run_file(data, False)

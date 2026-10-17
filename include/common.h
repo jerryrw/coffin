@@ -68,6 +68,14 @@ void print_permissions(uint32_t flags, uint32_t read_bit, uint32_t write_bit, ui
 #define STATUS_ERROR -1
 #define STATUS_SUCCESS 0
 
+/* Escape untrusted bytes into ASCII text. Output always ends with zero when
+ * capacity is nonzero; a shortened display ends with an ellipsis. */
+void escape_display(char *out, size_t capacity, const unsigned char *bytes, size_t length);
+void print_escaped(FILE *out, const char *text);
+void print_path_error(const char *prefix, const char *path);
+/* Read a bounded, terminated string from a checked file interval, charging work. */
+int read_display_string(const InputFile *input, uint64_t offset, uint64_t size,
+                        char *out, size_t capacity, uint64_t *work);
 void print_usage (char* argv[]);
 
 #endif

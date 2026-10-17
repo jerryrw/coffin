@@ -18,7 +18,8 @@ endif
 # Python drives regression tests, fixtures, and fuzz orchestration. CPPFLAGS
 # are preprocessor options; -Iinclude lets #include find project headers.
 PYTHON ?= python3
-CPPFLAGS += -Iinclude
+VERSION := $(shell cat VERSION)
+CPPFLAGS += -Iinclude -DCOFFIN_VERSION=\"$(VERSION)\"
 # CFLAGS control compilation: optimization/debug info, C11 language rules,
 # and useful warnings. LDFLAGS control linking; LDLIBS supply library dependencies.
 CFLAGS ?= -O2 -g
@@ -34,6 +35,11 @@ endif
 BUILD_DIR ?= obj
 BIN_DIR ?= bin
 TARGET = $(BIN_DIR)/coffin
+# DESTDIR stages an installation without requiring writes to system directories.
+PREFIX ?= /usr/local
+BINDIR ?= $(PREFIX)/bin
+DOCDIR ?= $(PREFIX)/share/doc/coffin
+INSTALL ?= install
 # wildcard finds source files. patsubst maps src/name.c to BUILD_DIR/name.o.
 # .d files record which headers each object depends on; LIBSRC omits CLI main
 # so test/fuzz programs can supply their own entry point.
@@ -44,7 +50,7 @@ LIBSRC = $(filter-out src/main.c,$(SRC))
 
 # Phony targets are actions, not expected output files. "all" is the default
 # action because it is the first ordinary target in this Makefile.
-.PHONY: all default clean test sanitize fuzz fuzz-smoke samples
+.PHONY: all default clean test sanitize fuzz fuzz-smoke samples differential install uninstall package valgrind leaks memory-check
 all: $(TARGET)
 default: all
 
@@ -62,7 +68,7 @@ $(BUILD_DIR) $(BIN_DIR):
 # Pattern rule: % stands for the same filename stem in source and target.
 # $< is the first prerequisite. -MMD -MP emits header dependency files; -c
 # compiles without linking. Editing a header then rebuilds its dependent objects.
-$(BUILD_DIR)/%.o: src/%.c Makefile | $(BUILD_DIR)
+$(BUILD_DIR)/%.o: src/%.c Makefile VERSION | $(BUILD_DIR)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -MMD -MP -c $< -o $@
 
 # The leading minus allows missing .d files on a fresh checkout. They will
@@ -84,16 +90,50 @@ $(BIN_DIR)/test-hashes: tests/test_hashes.c $(BUILD_DIR)/md5.o $(BUILD_DIR)/sha2
 
 # Make stops on a failing recipe, so any failed unit/CLI test fails this target.
 # Keep assertions enabled in test builds (do not define NDEBUG).
-test: $(TARGET) $(BIN_DIR)/test-entropy $(BIN_DIR)/test-hashes
+$(BIN_DIR)/test-display: tests/test_display.c $(BUILD_DIR)/common.o $(BUILD_DIR)/md5.o $(BUILD_DIR)/sha256.o | $(BIN_DIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+test: $(TARGET) $(BIN_DIR)/test-entropy $(BIN_DIR)/test-hashes $(BIN_DIR)/test-display
 	$(BIN_DIR)/test-entropy
 	$(BIN_DIR)/test-hashes
+	$(BIN_DIR)/test-display
 	$(PYTHON) tests/test_malformed.py $(TARGET)
+	$(PYTHON) tests/test_distribution.py $(TARGET)
 
 # Recursive $(MAKE) builds into separate directories. ASan detects many invalid
 # memory accesses; UBSan checks undefined operations. -Werror also makes compiler
 # warnings fail the build, and frame pointers improve diagnostic stack traces.
 sanitize:
 	$(MAKE) BUILD_DIR=obj/sanitize BIN_DIR=bin/sanitize CFLAGS='-O1 -g -std=c11 -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer' LDFLAGS='-fsanitize=address,undefined' test
+
+# Use ordinary debug binaries: Valgrind and Apple's leaks must not be mixed
+# with ASan's replacement allocator. Run functional tests before memory checks.
+VALGRIND ?= valgrind
+LEAKS ?= leaks
+MEMORY_CFLAGS = -O1 -g -std=c11 -Wall -Wextra -Wpedantic -fno-omit-frame-pointer
+
+$(BIN_DIR)/memory-probe: tests/memory_probe.c | $(BIN_DIR)
+	$(CC) -O0 -g -o $@ $<
+
+valgrind:
+	@test "$$(uname -s)" = Linux || { echo 'Use make leaks on macOS.' >&2; exit 1; }
+	@command -v "$(VALGRIND)" >/dev/null || { echo 'Install Valgrind first (Debian/Ubuntu: sudo apt-get install valgrind).' >&2; exit 1; }
+	$(MAKE) BUILD_DIR=obj/valgrind BIN_DIR=bin/valgrind CFLAGS='$(MEMORY_CFLAGS)' LDFLAGS='' test bin/valgrind/memory-probe
+	$(PYTHON) tests/run_memory_checks.py valgrind bin/valgrind --checker "$(VALGRIND)"
+
+leaks:
+	@test "$$(uname -s)" = Darwin || { echo 'Use make valgrind on Linux.' >&2; exit 1; }
+	@command -v "$(LEAKS)" >/dev/null || { echo 'Apple leaks tool is missing.' >&2; exit 1; }
+	$(MAKE) BUILD_DIR=obj/leaks BIN_DIR=bin/leaks CFLAGS='$(MEMORY_CFLAGS)' LDFLAGS='' test bin/leaks/memory-probe
+	$(PYTHON) tests/run_memory_checks.py leaks bin/leaks --checker "$(LEAKS)"
+
+# Convenient platform selection; these checks remain opt-in for ordinary builds.
+memory-check:
+ifeq ($(shell uname -s),Darwin)
+	$(MAKE) leaks
+else
+	$(MAKE) valgrind
+endif
 
 bin/fuzz:
 	mkdir -p $@
@@ -128,4 +168,22 @@ fuzz-smoke: bin/fuzz/coffin-smoke
 # Remove only the selected build outputs. Normal and sanitizer directories
 # are separate; override BUILD_DIR/BIN_DIR to clean the sanitizer build too.
 clean:
-	rm -f $(OBJ) $(DEP) $(TARGET) $(BIN_DIR)/test-entropy $(BIN_DIR)/test-hashes
+	rm -f $(OBJ) $(DEP) $(TARGET) $(BIN_DIR)/test-entropy $(BIN_DIR)/test-hashes $(BIN_DIR)/test-display $(BIN_DIR)/memory-probe
+
+# Independent tools are optional locally; CI specifies which tools must exist.
+differential: $(TARGET)
+	$(PYTHON) tests/test_differential_parser.py
+	$(PYTHON) tests/test_differential.py $(TARGET) $(DIFFERENTIAL_ARGS)
+
+install: $(TARGET)
+	$(INSTALL) -d "$(DESTDIR)$(BINDIR)" "$(DESTDIR)$(DOCDIR)"
+	$(INSTALL) -m 755 $(TARGET) "$(DESTDIR)$(BINDIR)/coffin"
+	$(INSTALL) -m 644 README.md License CHANGELOG.md VERSION "$(DESTDIR)$(DOCDIR)/"
+
+# Remove only files installed by this target, leaving shared directories alone.
+uninstall:
+	rm -f "$(DESTDIR)$(BINDIR)/coffin"
+	rm -f "$(DESTDIR)$(DOCDIR)/README.md" "$(DESTDIR)$(DOCDIR)/License" "$(DESTDIR)$(DOCDIR)/CHANGELOG.md" "$(DESTDIR)$(DOCDIR)/VERSION"
+
+package: $(TARGET)
+	$(PYTHON) scripts/package_release.py $(TARGET)

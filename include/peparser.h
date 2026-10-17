@@ -230,7 +230,7 @@ typedef struct {
 
 typedef struct
 {
-    char name[9]; // 8 chars + null terminator
+    char name[33]; // Up to eight escaped bytes plus a null terminator
     /*
      * Memory bytes and raw file bytes are different extents. virtual_address is
      * an RVA; PointerToRawData is an absolute disk offset.

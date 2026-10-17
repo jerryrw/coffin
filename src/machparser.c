@@ -34,7 +34,7 @@ static int parse_thin(const InputFile *input, MachOInfo *info, uint64_t base, si
 {
     unsigned char bytes[80];
     memset(info, 0, sizeof(*info));
-    snprintf(info->filename, sizeof(info->filename), "%s", input->path);
+    escape_display(info->filename, sizeof(info->filename), (const unsigned char *)input->path, strlen(input->path));
     info->file_size = slice_size;
     info->slice_offset = base; info->slice_size = slice_size;
     if (slice_read(input, base, slice_size, 0, bytes, 4) != STATUS_SUCCESS) goto invalid;
@@ -81,7 +81,7 @@ static int parse_thin(const InputFile *input, MachOInfo *info, uint64_t base, si
             uint64_t fileoff, filesize, count;
             if (info->is_64bit) {
                 seg64.cmd = cmd; seg64.cmdsize = size;
-                memcpy(seg64.segname, bytes + 8, 16);
+                escape_display(seg64.segname, sizeof(seg64.segname), bytes + 8, 16);
                 seg64.vmaddr = M64(bytes + 24); seg64.vmsize = M64(bytes + 32);
                 seg64.fileoff = M64(bytes + 40); seg64.filesize = M64(bytes + 48);
                 seg64.maxprot = M32(bytes + 56); seg64.initprot = M32(bytes + 60);
@@ -89,7 +89,7 @@ static int parse_thin(const InputFile *input, MachOInfo *info, uint64_t base, si
                 fileoff = seg64.fileoff; filesize = seg64.filesize; count = seg64.nsects;
             } else {
                 seg.cmd = cmd; seg.cmdsize = size;
-                memcpy(seg.segname, bytes + 8, 16);
+                escape_display(seg.segname, sizeof(seg.segname), bytes + 8, 16);
                 seg.vmaddr = M32(bytes + 24); seg.vmsize = M32(bytes + 28);
                 seg.fileoff = M32(bytes + 32); seg.filesize = M32(bytes + 36);
                 seg.maxprot = M32(bytes + 40); seg.initprot = M32(bytes + 44);
@@ -106,7 +106,8 @@ static int parse_thin(const InputFile *input, MachOInfo *info, uint64_t base, si
                 if (slice_read(input, base, slice_size, offset + fixed + j * width, bytes, width) != STATUS_SUCCESS)
                     goto invalid;
                 MachOSection section = {0};
-                memcpy(section.name, bytes, 16); memcpy(section.segment, bytes + 16, 16);
+                escape_display(section.name, sizeof(section.name), bytes, 16);
+                escape_display(section.segment, sizeof(section.segment), bytes + 16, 16);
                 size_t fields = info->is_64bit ? 48 : 40;
                 section.address = info->is_64bit ? M64(bytes + 32) : M32(bytes + 32);
                 section.size = info->is_64bit ? M64(bytes + 40) : M32(bytes + 36);
@@ -168,6 +169,7 @@ static int parse_thin(const InputFile *input, MachOInfo *info, uint64_t base, si
             }
         }
     }
+    if (parse_mach_details(input, info) != STATUS_SUCCESS) goto invalid;
     return STATUS_SUCCESS;
 invalid:
     free_mach_info(info);
@@ -201,6 +203,9 @@ static uint64_t fat64(const unsigned char *p, int big)
 void free_mach_info(MachOInfo *info)
 {
     for (unsigned i = 0; i < info->slice_count; ++i) free_mach_info(&info->slices[i]);
+    free(info->dependencies); free(info->symbols);
+    info->dependencies = NULL; info->symbols = NULL;
+    info->dependency_count = info->dependency_capacity = info->symbol_count = info->symbol_capacity = 0;
     free(info->load_commands); free(info->sections);
     info->load_commands = NULL; info->sections = NULL;
     info->command_capacity = info->section_capacity = 0;
@@ -266,7 +271,7 @@ int parse_mach_file(const InputFile *input, MachOInfo *info)
                 slice->cputype != cpu || slice->cpusubtype != subtype) goto invalid;
         }
         info->file_size = input->size;
-        snprintf(info->filename, sizeof(info->filename), "%s", input->path);
+        escape_display(info->filename, sizeof(info->filename), (const unsigned char *)input->path, strlen(input->path));
     }
     strcpy(info->sha256hashstring, input->sha256);
     strcpy(info->md5hashstring, input->md5);
@@ -279,7 +284,7 @@ invalid:
 
 /*
  * Render full field details, visiting each slice if this is a universal file.
- * A segment's raw name has only 16 bytes, so %.16s bounds its printed length.
+ * Raw 16-byte segment names have already become escaped, terminated strings.
  */
 void print_mach_info(const MachOInfo *mach_info)
 {
@@ -330,7 +335,7 @@ void print_mach_info(const MachOInfo *mach_info)
                                                     mach_info->load_commands[i].data.segment.segname;
             uint32_t prot = cmd == LC_SEGMENT_64 ? mach_info->load_commands[i].data.segment64.initprot :
                                                   mach_info->load_commands[i].data.segment.initprot;
-            printf("    Segment: %.16s\n    Declared permissions: ", name);
+            printf("    Segment: %s\n    Declared permissions: ", name);
             print_permissions(prot, 1, 2, 4);
             printf("\n");
         }

@@ -368,7 +368,8 @@ static int resource_label(PEReader *r, uint32_t value, unsigned depth, char out[
             cp = 0x10000 + ((cp - 0xd800) << 10) + low - 0xdc00;
         } else if (cp >= 0xdc00 && cp <= 0xdfff) return STATUS_ERROR;
         char utf8[8]; size_t n;
-        if (cp < 32 || cp == 127 || cp == '/' || cp == '\\') {
+        if (cp < 32 || (cp >= 127 && cp <= 159) || cp == 0x061c || cp == 0x200e || cp == 0x200f || cp == 0x2028 || cp == 0x2029 ||
+            (cp >= 0x202a && cp <= 0x202e) || (cp >= 0x2066 && cp <= 0x2069) || cp == '/' || cp == '\\') {
             snprintf(utf8, sizeof(utf8), "\\u%04X", cp); n = 6;
         } else if (cp < 0x80) { utf8[0] = (char)cp; n = 1; }
         else if (cp < 0x800) {

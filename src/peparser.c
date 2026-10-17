@@ -22,7 +22,7 @@ int parse_pe_file(const InputFile *input, PEInfo *info)
     unsigned char dos[64], coff[20], optional[112], section[40], signature[4];
     FILE *file = input->file;
     memset(info, 0, sizeof(*info));
-    snprintf(info->filename, sizeof(info->filename), "%s", input->path);
+    escape_display(info->filename, sizeof(info->filename), (const unsigned char *)input->path, strlen(input->path));
     info->file_size = input->size;
     strcpy(info->sha256hashstring, input->sha256);
     strcpy(info->md5hashstring, input->md5);
@@ -94,9 +94,9 @@ int parse_pe_file(const InputFile *input, PEInfo *info)
         memset(&info->sections[i], 0, sizeof(info->sections[i]));
         /*
          * Disk names occupy exactly eight bytes and need not end in zero.
-         * The destination has nine bytes and was zeroed above, supplying a terminator.
+         * The destination allows four display characters per escaped byte plus zero.
          */
-        memcpy(info->sections[i].name, section, 8);
+        escape_display(info->sections[i].name, sizeof(info->sections[i].name), section, 8);
         info->sections[i].virtual_size = decode32(section + 8);
         info->sections[i].virtual_address = decode32(section + 12);
         info->sections[i].raw_size = raw_size;

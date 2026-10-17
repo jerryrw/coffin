@@ -59,7 +59,7 @@ int extract_pe_resources(const InputFile *input, const PEInfo *info, const char 
      * a symbolic link at this open. Generated names contain no input path parts.
      */
     int dir = open(directory, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
-    if (dir < 0) { perror(directory); free(resources); return STATUS_ERROR; }
+    if (dir < 0) { print_path_error("Cannot open resource directory", directory); free(resources); return STATUS_ERROR; }
     int status = STATUS_ERROR;
     int index_fd = openat(dir, "index.tsv", O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600);
     /*

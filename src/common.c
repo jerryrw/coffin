@@ -8,6 +8,7 @@
 
 #include "common.h"
 #include <limits.h>
+#include <errno.h>
 #include <string.h>
 #include <stdlib.h>
 #include "md5.h"
@@ -56,17 +57,19 @@ int read_at(FILE *file, uint64_t offset, void *buffer, size_t length, size_t siz
  */
 void print_usage(char *argv[])
 {
-    printf("Usage: %s [options] <filepath>\n", argv[0]);
+    fputs("Usage: ", stdout); print_escaped(stdout, argv[0]); puts(" [options] <filepath>");
     puts("  --summary          Summary and structural observations only");
     puts("  --verbose          Full field details and progress on stderr");
     puts("  --headers --sections --observations");
     puts("  --imports --exports --resources       PE detail selectors");
+    puts("  --dependencies --symbols             ELF/Mach-O linkage tables");
     puts("  --program-headers                    ELF detail selector");
     puts("  --load-commands                      Mach-O detail selector");
     puts("  --entropy-window BYTES  Add non-overlapping file entropy windows (max 4096)");
     puts("  --no-preview       Hide decoded resource payload previews");
     puts("  --code-page N      Fallback code page for unspecified resource text");
     puts("  --extract-resources NEW_DIRECTORY     Extract PE resource payloads");
+    puts("  --version          Show the build version");
     puts("  --help             Show this help");
     puts("Selectors may be combined; unsupported format/selector pairs fail.");
 
@@ -145,7 +148,8 @@ int input_prepare(InputFile *input)
     hex_string(sha_digest, sizeof(sha_digest), input->sha256);
     hex_string(md5_digest, sizeof(md5_digest), input->md5);
     if (input->verbose)
-        fprintf(stderr, "Analyzing %s (%zu bytes); SHA-256 and MD5 calculated\n", input->path, input->size);
+        { fputs("Analyzing ", stderr); print_escaped(stderr, input->path);
+          fprintf(stderr, " (%zu bytes); SHA-256 and MD5 calculated\n", input->size); }
     return STATUS_SUCCESS;
 }
 
@@ -205,4 +209,69 @@ int reserve_array(void **array, unsigned *capacity, unsigned needed, size_t item
     if (!grown) return STATUS_ERROR;
     *array = grown; *capacity = next;
     return STATUS_SUCCESS;
+}
+
+/* Build display text separately from raw file bytes. Escaping high bytes as well
+ * as controls avoids locale-dependent interpretation and Unicode direction tricks.
+ * The caller supplies distinct input/output buffers; parsing keeps raw offsets. */
+void escape_display(char *out, size_t capacity, const unsigned char *bytes, size_t length)
+{
+    if (!capacity) return;
+    size_t required = 0, used = 0; int truncated = 0;
+    for (size_t i = 0; i < length && bytes[i]; ++i) {
+        unsigned char c = bytes[i];
+        size_t n = c < 32 || c >= 127 || c == '\\' ? 4 : 1;
+        if (n > capacity - required - 1) { truncated = 1; break; }
+        required += n;
+    }
+    size_t limit = truncated && capacity >= 4 ? capacity - 4 : capacity - 1;
+    for (size_t i = 0; i < length && bytes[i]; ++i) {
+        unsigned char c = bytes[i];
+        size_t n = c < 32 || c >= 127 || c == '\\' ? 4 : 1;
+        if (n > limit - used) break;
+        if (n == 4) snprintf(out + used, capacity - used, "\\x%02X", c);
+        else out[used] = (char)c;
+        used += n;
+    }
+    if (truncated && capacity >= 4) { memcpy(out + used, "...", 3); used += 3; }
+    out[used] = 0;
+}
+
+/* Paths may be arbitrarily long, so print incrementally rather than truncating. */
+void print_escaped(FILE *out, const char *text)
+{
+    for (const unsigned char *p = (const unsigned char *)text; *p; ++p)
+        if (*p < 32 || *p >= 127 || *p == '\\') fprintf(out, "\\x%02X", *p);
+        else fputc(*p, out);
+}
+
+/* Capture errno before printing, since library calls may change it. */
+void print_path_error(const char *prefix, const char *path)
+{
+    int saved = errno;
+    fprintf(stderr, "%s: ", prefix); print_escaped(stderr, path);
+    fprintf(stderr, ": %s\n", strerror(saved));
+}
+
+int read_display_string(const InputFile *input, uint64_t offset, uint64_t size,
+                        char *out, size_t capacity, uint64_t *work)
+{
+    unsigned char bytes[4096];
+    size_t used = 0;
+    /* Read short chunks: fetching 4 KiB for every two-character symbol would
+     * waste I/O and exhaust the shared budget long before useful table limits. */
+    while (used < sizeof(bytes) && used < size) {
+        size_t count = size - used < 64 ? (size_t)(size - used) : 64;
+        if (count > sizeof(bytes) - used) count = sizeof(bytes) - used;
+        if (*work > 16u * 1024u * 1024u || count > 16u * 1024u * 1024u - *work ||
+            read_at(input->file, offset + used, bytes + used, count, input->size) != STATUS_SUCCESS) return STATUS_ERROR;
+        *work += count;
+        const unsigned char *end = memchr(bytes + used, 0, count);
+        if (end) {
+            escape_display(out, capacity, bytes, (size_t)(end - bytes));
+            return STATUS_SUCCESS;
+        }
+        used += count;
+    }
+    return STATUS_ERROR;
 }

@@ -46,7 +46,7 @@ static void append(Preview *p, const char *format, ...)
  */
 static void character(Preview *p, uint32_t cp)
 {
-    if (cp < 32 || (cp >= 127 && cp <= 159) || cp == '\\' || cp == 0x2028 || cp == 0x2029 ||
+    if (cp < 32 || (cp >= 127 && cp <= 159) || cp == '\\' || cp == 0x061c || cp == 0x200e || cp == 0x200f || cp == 0x2028 || cp == 0x2029 ||
         (cp >= 0x202a && cp <= 0x202e) || (cp >= 0x2066 && cp <= 0x2069)) {
         append(p, "\\u%04X", cp); return;
     }

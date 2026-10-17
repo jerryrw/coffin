@@ -94,6 +94,7 @@ static const char *program_type(unsigned type, unsigned machine)
     case 0: return "NULL"; case 1: return "LOAD"; case 2: return "DYNAMIC"; case 3: return "INTERP";
     case 4: return "NOTE"; case 6: return "PHDR"; case 7: return "TLS";
     case 0x6474e550: return "GNU_EH_FRAME"; case 0x6474e551: return "GNU_STACK";
+    case 0x6474e553: return "GNU_PROPERTY";
     case 0x6474e552: return "GNU_RELRO"; case 0x70000001: return machine == 40 ? "ARM_EXIDX" : "UNKNOWN";
     }
     return "UNKNOWN";
@@ -171,7 +172,8 @@ static void permissions(uint32_t flags, uint32_t r, uint32_t w, uint32_t x)
 static void identity(const InputFile *input, const char *format)
 {
     printf("%s File Analysis Report\n", format);
-    printf("File: %s\nSize: %zu bytes\nSHA-256: %s\nMD5: %s\n", input->path, input->size, input->sha256, input->md5);
+    fputs("File: ", stdout); print_escaped(stdout, input->path);
+    printf("\nSize: %zu bytes\nSHA-256: %s\nMD5: %s\n", input->size, input->sha256, input->md5);
 }
 /*
  * Render a numeric measurement or N/A for NAN (no measured bytes).
@@ -191,6 +193,7 @@ static void entropy_overview(const InputFile *input, const ReportOptions *o)
 {
     printf("Whole-file entropy: "); entropy_value(o->entropy->whole);
     printf(" bits/byte across %zu file bytes\n", input->size);
+    if (o->verbose) printf("Entropy work: %llu bytes read | %u cached ranges\n", (unsigned long long)o->entropy->bytes_read, o->entropy->count);
     puts("Entropy uses on-disk byte frequencies, including padding; virtual zero-fill is excluded from section measurements.");
     puts("High entropy alone does not establish randomness, compression, encryption, or maliciousness.");
     if (o->entropy->window_size) {
@@ -368,6 +371,57 @@ static void elf_observations(const ELFInfo *info)
     observations_end(count);
 }
 
+/* Dependency names are recorded declarations, never resolved on this host.
+ * Mach-O command kind distinguishes weak/re-export/upward/lazy loads and IDs. */
+static void linkage(const Dependency *dependencies, unsigned count,
+                     const BinarySymbol *symbols, unsigned symbol_count,
+                     int unavailable, int mach, const ReportOptions *o)
+{
+    if (wants(o, REPORT_DEPENDENCIES)) {
+        printf("\n%s dependencies:\n", mach ? "Mach-O" : "ELF");
+        if (!count) puts("  No declared dependencies.");
+        for (unsigned i = 0; i < count; ++i) {
+            const Dependency *d = &dependencies[i];
+            const char *kind = "needed";
+            if (mach) switch (d->kind & 0x7fffffff) {
+                case 0xd: kind = "image-id"; break; case 0x18: kind = "weak"; break;
+                case 0x1f: kind = "re-export"; break; case 0x20: kind = "lazy"; break;
+                case 0x23: kind = "upward"; break; default: kind = "load"; break;
+            }
+            printf("  %u | %s | %s", i + 1, kind, d->name);
+            if (mach) printf(" | current=%u.%u.%u compatible=%u.%u.%u raw=0x%08X",
+                d->current_version >> 16, (d->current_version >> 8) & 255, d->current_version & 255,
+                d->compatibility_version >> 16, (d->compatibility_version >> 8) & 255,
+                d->compatibility_version & 255, d->kind);
+            puts("");
+        }
+    }
+    if (wants(o, REPORT_SYMBOLS)) {
+        printf("\n%s symbols (%u entries):\n", mach ? "Mach-O" : "ELF", symbol_count);
+        puts(mach ? "  # | Name | Value | Section | Raw type | Description | Binding / role" :
+                    "  # | Name | Value | Bytes | Section | Bind | Type | Visibility | Table / role");
+        for (unsigned i = 0; i < symbol_count; ++i) {
+            const BinarySymbol *s = &symbols[i];
+            printf("  %u | %s | 0x%016llX | ", i, s->name[0] ? s->name : "<unnamed>", (unsigned long long)s->value);
+            if (mach) {
+                unsigned type = s->type & 0xe;
+                const char *role = s->type & 0xe0 ? "debug" : type == 0 ? (s->value ? "common" : "undefined") :
+                    type == 0xe ? "section" : type == 2 ? "absolute" : type == 0xa ? "indirect" : "other";
+                printf("%u | 0x%02X | 0x%04X | %s / %s", s->section, s->type, s->description,
+                       s->type & 1 ? "external" : "local", role);
+                if (s->indirect[0]) printf(" -> %s", s->indirect);
+            } else {
+                const char *binding = s->binding == 0 ? "LOCAL" : s->binding == 1 ? "GLOBAL" : s->binding == 2 ? "WEAK" : "OTHER";
+                printf("%llu | %u | %s(%u) | %u | %u | %s:%u / %s", (unsigned long long)s->size,
+                    s->section, binding, s->binding, s->type, s->visibility, s->dynamic ? "dynamic" : "static",
+                    s->table, s->section ? "defined" : "undefined");
+            }
+            puts("");
+        }
+        if (unavailable) puts("  Symbols unavailable: no recoverable symbol table/count; this does not prove there are no symbols.");
+    }
+}
+
 /*
  * Print normalized ELF results with address widths appropriate to ELF32/ELF64.
  * Compute name-column width once, then show each parsed row. NULL/NOBITS rows
@@ -381,6 +435,7 @@ void report_elf(const InputFile *input, const ELFInfo *info, const ReportOptions
     printf("Summary: ELF%u / %s / %s / %s\n", info->is_64bit ? 64 : 32, cpu(info->e_machine, 0),
            elf_type(info->e_type), info->big_endian ? "big-endian" : "little-endian");
     printf("Entry point: VA 0x%0*llX\nCounts: %u program headers | %u sections\n", width, (unsigned long long)info->e_entry, info->program_count, info->section_count);
+    printf("Linkage: %u dependency records | %u symbols\n", info->dependency_count, info->symbol_count);
     if (show_observations(o)) elf_observations(info);
     if (o->summary) return;
     if (wants(o, REPORT_HEADERS)) {
@@ -423,6 +478,7 @@ void report_elf(const InputFile *input, const ELFInfo *info, const ReportOptions
                                    (unsigned long long)s->sh_addralign, (unsigned long long)s->sh_entsize);
         }
     }
+    linkage(info->dependencies, info->dependency_count, info->symbols, info->symbol_count, info->symbols_unavailable, 0, o);
     if (o->verbose && !o->selected) { puts("\nFull field details:"); print_elf_info(info); }
 }
 
@@ -445,7 +501,7 @@ static void mach_observations(const MachOInfo *info)
         const char *name = wide ? c->data.segment64.segname : c->data.segment.segname;
         if (info->has_entry && (prot & 4) && contains(fileoff, filesize, info->entry_file_offset)) executable_entry = 1;
         if ((prot & 6) == 6) {
-            printf("  [WX] Mach-O segment %.16s at slice file offset 0x%016llX declares write and execute permissions (initprot 0x%08X).\n", name, (unsigned long long)fileoff, prot); ++count;
+            printf("  [WX] Mach-O segment %s at slice file offset 0x%016llX declares write and execute permissions (initprot 0x%08X).\n", name, (unsigned long long)fileoff, prot); ++count;
         }
     }
     if (info->has_entry && !executable_entry) {
@@ -470,6 +526,7 @@ static void mach_slice(const MachOInfo *info, const ReportOptions *o)
         puts("");
     } else puts("Entry point: unavailable (no LC_MAIN; thread-state entry decoding is not implemented)");
     printf("Counts: %u load commands | %u sections\n", info->ncmds, info->section_count);
+    printf("Linkage: %u dependency records | %u symbols\n", info->dependency_count, info->symbol_count);
     if (show_observations(o)) mach_observations(info);
     if (o->summary) return;
     if (wants(o, REPORT_HEADERS)) {
@@ -485,7 +542,7 @@ static void mach_slice(const MachOInfo *info, const ReportOptions *o)
             printf("%3d | %-28s | 0x%08X | %u\n", i + 1, command_type(c->cmd), c->cmd, c->cmdsize);
             if (c->cmd == LC_SEGMENT || c->cmd == LC_SEGMENT_64) {
                 int wide = c->cmd == LC_SEGMENT_64;
-                printf("      Segment: %.16s | VA 0x%0*llX | VM bytes %llu | Slice file offset 0x%016llX | File bytes %llu | ",
+                printf("      Segment: %s | VA 0x%0*llX | VM bytes %llu | Slice file offset 0x%016llX | File bytes %llu | ",
                        wide ? c->data.segment64.segname : c->data.segment.segname, width,
                        (unsigned long long)(wide ? c->data.segment64.vmaddr : c->data.segment.vmaddr),
                        (unsigned long long)(wide ? c->data.segment64.vmsize : c->data.segment.vmsize),
@@ -499,7 +556,7 @@ static void mach_slice(const MachOInfo *info, const ReportOptions *o)
         puts("\nMach-O sections (permissions are inherited segment declarations):");
         printf("  # | %-33s | %-*s | Slice file offset  | Container offset   | Bytes      | RWX | Entropy | Type / raw flags\n", "Segment,section", width + 2, "VA");
         for (unsigned i = 0; i < info->section_count; ++i) {
-            const MachOSection *s = &info->sections[i]; char name[35];
+            const MachOSection *s = &info->sections[i]; char name[131];
             snprintf(name, sizeof(name), "%s,%s", s->segment, s->name);
             printf("%3u | %-33s | 0x%0*llX | ", i + 1, name, width, (unsigned long long)s->address);
             if (s->zerofill) printf("%-18s | %-18s", "-- (zero-fill)", "--");
@@ -511,6 +568,7 @@ static void mach_slice(const MachOInfo *info, const ReportOptions *o)
             if (o->verbose) printf("      Alignment: 2^%u | Relocations: %u | Relocation slice file offset: 0x%016llX\n", s->alignment, s->relocation_count, (unsigned long long)s->relocation_offset);
         }
     }
+    linkage(info->dependencies, info->dependency_count, info->symbols, info->symbol_count, info->symbols_unavailable, 1, o);
     if (o->verbose && !o->selected) { puts("\nFull field details:"); print_mach_info(info); }
 }
 
@@ -532,4 +590,11 @@ void report_mach(const InputFile *input, const MachOInfo *info, const ReportOpti
             mach_slice(slice, o);
         }
     } else mach_slice(info, o);
+}
+
+/* PE observations use entropy; ELF/Mach-O observations currently do not.
+ * A focused header/import report must not spend time reading unused sections. */
+int report_needs_section_entropy(const ReportOptions *o, int pe)
+{
+    return wants(o, REPORT_SECTIONS) || (pe && show_observations(o));
 }
