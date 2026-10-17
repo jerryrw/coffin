@@ -172,6 +172,7 @@ clean:
 
 # Independent tools are optional locally; CI specifies which tools must exist.
 differential: $(TARGET)
+	$(PYTHON) tests/test_differential_parser.py
 	$(PYTHON) tests/test_differential.py $(TARGET) $(DIFFERENTIAL_ARGS)
 
 install: $(TARGET)

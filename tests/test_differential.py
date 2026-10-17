@@ -97,17 +97,24 @@ def llvm_sections(binary, oracle, path):
             assert name in actual, (path, name)
 
 
+def readelf_programs(output):
+    # GNU readelf prints a zero alignment as plain 0; LLVM uses 0x0.
+    # Flags may also be empty. Neither variation changes the segment itself.
+    programs = []
+    for line in output.splitlines():
+        m = re.match(r'^\s+(\S+)\s+(0x[0-9a-f]+)\s+(0x[0-9a-f]+)\s+0x[0-9a-f]+\s+(0x[0-9a-f]+)\s+(0x[0-9a-f]+)\s+([RWE \t]*)\s+(?:0x[0-9a-f]+|[0-9]+)\s*$', line)
+        if m:
+            kind, offset, va, size, mem, perms = m.groups()
+            programs.append((kind, int(offset, 16), int(va, 16), int(size, 16), int(mem, 16), ''.join(perms.split())))
+    return programs
+
+
 def elf_reference(binary, oracle, path):
     expected = run(oracle, '-W', '-h', '-l', '-s', '-d', path)
     actual = run(binary, '--headers', '--program-headers', '--symbols', '--dependencies', path)
     entry = int(re.search(r'Entry point address:\s*(0x[0-9a-fA-F]+)', expected).group(1), 0)
     assert f'VA 0x{entry:016X}' in actual if re.search(r'Class:\s+ELF64', expected) else f'VA 0x{entry:08X}' in actual
-    expected_programs = []
-    for line in expected.splitlines():
-        m = re.match(r'^\s+(\S+)\s+(0x[0-9a-f]+)\s+(0x[0-9a-f]+)\s+0x[0-9a-f]+\s+(0x[0-9a-f]+)\s+(0x[0-9a-f]+)\s+([RWE ]+)\s+0x[0-9a-f]+', line)
-        if m:
-            kind, offset, va, size, mem, perms = m.groups()
-            expected_programs.append((kind, int(offset, 16), int(va, 16), int(size, 16), int(mem, 16), perms.replace(' ', '')))
+    expected_programs = readelf_programs(expected)
     program_report = run(binary, '--program-headers', path)
     found = rows(program_report)
     assert len(found) == len(expected_programs), (path, found, expected_programs)
