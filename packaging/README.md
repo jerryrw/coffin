@@ -23,7 +23,7 @@ library dependencies. Compatibility with older distributions is not promised.
 Install a downloaded package and later remove it:
 
 ```sh
-sudo apt install ./coffin_0.1.0-1_amd64.deb
+sudo apt install ./coffin_0.1.1-1_amd64.deb
 coffin --version
 sudo apt remove coffin
 ```
@@ -58,7 +58,7 @@ formats, and malformed-file rejection; it never executes the fixture binaries.
 On macOS, test from the local source archive without publishing:
 
 ```sh
-python3 tests/test_homebrew.py dist/coffin-0.1.0-source.tar.gz
+python3 tests/test_homebrew.py dist/coffin-0.1.1-source.tar.gz
 ```
 
 This creates a temporary local tap, builds and tests Coffin, reinstalls and tests
@@ -91,3 +91,24 @@ CI neither creates a tag nor publishes a release or a tap.
 The source export normalizes archive metadata for stable source checksums. It
 includes an explicit source-file list so extracted releases can rebuild and run
 packaging tests without Git. This does not claim reproducible compiled binaries.
+
+## Version and tag sequence
+
+The older `v0.1.0` tag does not contain Debian/Homebrew packaging. Leave it at
+its original commit. For the package release, commit VERSION `0.1.1` and merge
+that change together with the packaging work into `main`. Wait for all main
+branch checks, including package installation/removal, to pass. Then, from an
+up-to-date clean main checkout:
+
+```sh
+git switch main
+git pull --ff-only origin main
+test "$(cat VERSION)" = 0.1.1
+git tag -a v0.1.1 -m "Release v0.1.1"
+git push origin v0.1.1
+```
+
+The tag push starts another **Build and test** run, labeled `v0.1.1`. Its Summary
+page will contain `verified-release-candidates` after every required job passes.
+Use those artifacts for the GitHub Release. A branch or pull-request run does
+not execute the final release-candidate collection job.

@@ -1,8 +1,18 @@
 # Changelog
 
-## 0.1.0 — Unreleased
+## 0.1.1 — Unreleased
 
-Initial release preparation. No release tag has been created by these changes.
+Release preparation for the first Debian and Homebrew distribution packages.
+The existing `v0.1.0` tag predates those packages and remains unchanged.
+
+- Add native Debian packages and a source-based Homebrew formula, with
+  installation, reinstallation, and removal checked in CI.
+- Export checksummed source archives that rebuild without Git metadata.
+- Update GitHub Actions to Node.js 24 and pin Linux runners to Ubuntu 24.04.
+
+## 0.1.0
+
+Initial executable inspector and verification infrastructure.
 
 - Inspect PE32/PE32+, ELF32/ELF64, and thin/universal Mach-O files.
 - Report full-file MD5/SHA-256, declared permissions, structural observations,
@@ -21,6 +31,3 @@ Initial release preparation. No release tag has been created by these changes.
   and fuzz tests.
 - Share table-allocation, metadata-read, and ELF lookup budgets across an input,
   including universal slices; reject excess work explicitly.
-- Prepare native Debian packages and a checksummed source-based Homebrew formula;
-  test installation, malformed-input handling, reinstallation, and removal in CI.
-- Export source archives that can rebuild and test without Git metadata.
