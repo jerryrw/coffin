@@ -14,6 +14,9 @@ make fuzz-smoke
 make fuzz
 python3 tests/run_fuzz.py bin/fuzz/coffin-fuzz --runs 10000
 make package
+make homebrew
+# On Debian/Ubuntu with packaging tools:
+make deb
 ```
 
 Independent comparisons require at least one installed oracle. Linux CI requires
@@ -51,12 +54,16 @@ prefix when administrator access is unavailable.
    before creating a tag. A local macOS pass does not verify Linux behavior.
 4. Create and push a tag exactly matching `v` plus `VERSION`, for example
    `v0.1.0`. Tag builds reject a version mismatch and run the full matrix again.
-5. Wait for the `release-candidates` job. It depends on both matrix jobs and
+5. Wait for the `release-candidates` job. It depends on both matrix jobs plus
+   successful Debian and Homebrew installation/removal jobs, and
    exposes `verified-release-candidates` only after all required checks pass.
    The ordinary CI jobs keep staging archives as `candidate-*` artifacts; those
    are not a release approval if another platform failed.
-6. Download the verified archives and check their SHA-256 sidecars. Review the
-   release notes, then create the GitHub release and attach the verified files.
+6. Download the verified artifacts and check every SHA-256 sidecar. Review the
+   release notes, then create the GitHub release and attach the host archives,
+   `.deb`, `coffin-VERSION-source.tar.gz`, and their checksum files. The generated
+   `coffin.rb` refers to this exact source archive; upload it before publishing
+   the matching formula in your Homebrew tap. See the [packaging guide](../packaging/README.md).
 
 The workflows prepare artifacts; they do not create tags, publish a GitHub
 release, or configure branch/tag protection. Release maintainers perform those
@@ -87,5 +94,5 @@ bin/fuzz/coffin-fuzz -minimize_crash=1 -exact_artifact_path=/tmp/coffin-minimize
 Confirm that the minimized bytes still fail, then add a focused fixture/assertion
 in `tests/test_malformed.py` or a dedicated C unit test. Keep the expected behavior
 explicit: malformed input should normally return an error, not crash or hang.
-Raw generated corpora remain outside Git; small purposeful regression inputs
-belong in the test source.
+Raw generated corpora remain outside Git; preserve minimized regression inputs
+and expected behavior in the permanent `tests/corpus/` manifest.

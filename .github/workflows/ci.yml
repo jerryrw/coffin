@@ -11,11 +11,12 @@ jobs:
     # Expand this job into one Linux run and one macOS run to catch host differences.
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        # Keep Linux on the tested LTS while ubuntu-latest migrates to 26.04.
+        os: [ubuntu-24.04, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.x'
       # Linux rebuilds ELF/PE fixtures. QEMU runs the ARM samples when not native.
@@ -47,13 +48,13 @@ jobs:
         run: |
           test "$GITHUB_REF_NAME" = "v$(cat VERSION)"
           make package
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: startsWith(github.ref, 'refs/tags/v')
         with:
           name: candidate-${{ matrix.os }}
           path: dist/
       # Retain fuzz diagnostics only after a failure so a developer can reproduce it.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: failure()
         with:
           name: fuzz-diagnostics-${{ matrix.os }}
@@ -62,17 +63,69 @@ jobs:
             bin/valgrind/memory-logs/
           if-no-files-found: ignore
 
-  release-candidates:
+  # Build/install packages only after the full parser verification matrix passes.
+  # The Debian baseline is deliberately explicit; its glibc dependencies are
+  # calculated by debhelper rather than guessed in package metadata.
+  debian-package:
     needs: test
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    container: debian:bookworm-slim
+    timeout-minutes: 20
+    env:
+      DEBIAN_FRONTEND: noninteractive
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Install Debian packaging tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates build-essential debhelper dpkg-dev python3
+      - uses: actions/checkout@v5
+      # Container root can differ from the host owner of the mounted checkout.
+      # Register this exact workspace in the HOME used by subsequent steps.
+      - name: Trust the mounted checkout for packaging Git queries
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - run: make deb
+      - name: Install, exercise, remove, and reinstall the Debian package
+        run: python3 tests/test_deb.py dist/coffin_*_amd64.deb
+      - uses: actions/upload-artifact@v6
+        with:
+          name: candidate-debian
+          path: |
+            dist/*.deb
+            dist/*.deb.sha256
+          if-no-files-found: error
+
+  homebrew-package:
+    needs: test
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+      - run: make homebrew
+      - name: Install, test, reinstall, and uninstall from a disposable tap
+        run: python3 tests/test_homebrew.py dist/coffin-*-source.tar.gz
+      - uses: actions/upload-artifact@v6
+        with:
+          name: candidate-homebrew
+          path: |
+            dist/coffin.rb
+            dist/*-source.tar.gz
+            dist/*-source.tar.gz.sha256
+          if-no-files-found: error
+
+  release-candidates:
+    needs: [test, debian-package, homebrew-package]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v7
         with:
           pattern: candidate-*
           path: release-candidates
           merge-multiple: true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: verified-release-candidates
           path: release-candidates/

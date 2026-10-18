@@ -1,0 +1,30 @@
+require "digest"
+
+class Coffin < Formula
+  desc "Inspect PE, ELF, and Mach-O executable metadata without executing files"
+  homepage "https://github.com/jerryrw/coffin"
+  url @SOURCE_URL@
+  version @VERSION@
+  sha256 @SHA256@
+  license "MIT"
+
+  def install
+    system "make", "CC=#{ENV.cc}"
+    system "make", "install", "PREFIX=#{prefix}", "DOCDIR=#{doc}"
+    # These known-source binaries are parser inputs; the test never executes them.
+    (pkgshare/"test-fixtures").install "hello-elf64", "hello-pe64.exe", "hello-mach-arm64"
+  end
+
+  test do
+    assert_equal "coffin #{version}", shell_output("#{bin}/coffin --version").strip
+    { "hello-elf64" => "ELF", "hello-pe64.exe" => "PE", "hello-mach-arm64" => "Mach-O" }.each do |name, format|
+      input = pkgshare/"test-fixtures"/name
+      output = shell_output("#{bin}/coffin --headers --sections #{input}")
+      assert_match "#{format} File Analysis Report", output
+      assert_match "SHA-256: #{Digest::SHA256.file(input).hexdigest}", output
+      assert_match "sections", output
+    end
+    (testpath/"truncated").write "\x7fELF"
+    assert_match "Invalid", shell_output("#{bin}/coffin #{testpath}/truncated 2>&1", 1)
+  end
+end

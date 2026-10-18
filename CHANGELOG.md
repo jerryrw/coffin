@@ -21,3 +21,6 @@ Initial release preparation. No release tag has been created by these changes.
   and fuzz tests.
 - Share table-allocation, metadata-read, and ELF lookup budgets across an input,
   including universal slices; reject excess work explicitly.
+- Prepare native Debian packages and a checksummed source-based Homebrew formula;
+  test installation, malformed-input handling, reinstallation, and removal in CI.
+- Export source archives that can rebuild and test without Git metadata.
