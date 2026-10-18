@@ -44,12 +44,19 @@ flowchart TD
     B --> C[Measure size and calculate both hashes]
     C --> D[Choose PE, ELF, or Mach-O parser]
     D --> E[Validate headers and collect metadata]
-    E --> F[Measure whole-file and section entropy]
-    F --> G[Measure optional file windows]
-    G --> H[Extract resources if requested]
+    E --> F[Measure whole-file entropy and optional file windows]
+    F --> G[Measure section entropy when the report needs it]
+    G --> H[Extract PE resources if requested]
     H --> I[Print selected report groups]
     I --> J[Free arrays and close stream]
 ```
+
+`entropy_file` computes the whole-file result and any requested windows before
+format-specific section measurements. `report_needs_section_entropy` decides
+whether those extra reads are necessary. Header/linkage-only reports skip them;
+PE summaries and observations can still need section entropy for their findings.
+Report selection controls presentation and optional entropy work; it does not
+mean the parser validates only the selected tables.
 
 Some stages return early on error, but allocated resources still need cleanup.
 `main` returns `EXIT_SUCCESS` only when all requested work completes. Low-level
@@ -225,7 +232,16 @@ reading a borrowed `FILE *` changes stream state. Do not copy a prepared
 `reserve_array` charges allocation growth across all tables and universal slices.
 The budget is not refunded during an analysis. `parser_lookup_work` charges
 repeated ELF table scans before entering their loops. These helpers reject work
-before it would exceed the allowance. Limits are described in the main README.
+before it would exceed the allowance.
+
+The constants in `include/common.h` currently allow 64 MiB of table allocation
+growth, 64 MiB of metadata reads, 1,000,000 metadata read operations, and
+16,777,216 repeated ELF lookup steps per input. Each table accepts at most
+100,000 entries. All slices of a universal Mach-O share those counters. Budget
+failures return an error before a report is printed. These are separate work
+budgets, not a total-process memory or wall-clock limit; hashing still reads the
+whole input. Entropy, resource previews, and extraction have their own limits,
+listed in the main README.
 
 ## Cleanup and error handling
 
@@ -262,6 +278,7 @@ values to simplify or change when learning the code.
 
 | Tool/file | Purpose |
 | --- | --- |
+| [tests/test_display.c](../tests/test_display.c) | Escape untrusted names and paths for terminal output |
 | [tests/test_hashes.c](../tests/test_hashes.c) | Fixed expected digests, padding boundaries, unaligned input, and update partitioning |
 | [tests/test_entropy.c](../tests/test_entropy.c) | Known distributions, cache reuse, work limits, and windows |
 | [tests/test_malformed.py](../tests/test_malformed.py) | Run the CLI, inspect reports, and verify rejection/extraction behavior |
@@ -270,11 +287,18 @@ values to simplify or change when learning the code.
 | [tests/test_limits.c](../tests/test_limits.c) | Allocation, metadata I/O, and lookup budget boundaries |
 | [tests/test_corpus.py](../tests/test_corpus.py) | Frozen checksummed inputs, expected status, timeouts |
 | [tests/test_parser_limits.py](../tests/test_parser_limits.py) | Shared allocation budget across universal slices |
-| [tests/test_differential.py](../tests/test_differential.py) | Compare metadata against independent binary tools |
+| [tests/test_differential.py](../tests/test_differential.py) | Compare metadata and malformed-header rejection against independent binary tools |
+| [tests/test_differential_parser.py](../tests/test_differential_parser.py) | GNU/LLVM output differences and the extended-numbering fallback |
+| [tests/regression_corpus.py](../tests/regression_corpus.py), [tests/corpus/README.md](../tests/corpus/README.md) | Load frozen inputs and verify checksums and recorded expectations |
+| [tests/run_memory_checks.py](../tests/run_memory_checks.py) | Valgrind or Apple leaks checks, including a deliberate-leak self-test |
+| [tests/memory_probe.c](../tests/memory_probe.c) | Intentionally leak memory so a broken checker cannot silently pass |
+| [tests/benchmark_reports.py](../tests/benchmark_reports.py) | Compare entropy work and timing for focused versus section reports |
 | [tests/test_distribution.py](../tests/test_distribution.py) | Verify staging, archives, and version output without system writes |
 | [tests/run_fuzz.py](../tests/run_fuzz.py) | Preserve fuzz corpus, logs, and reproducible crash inputs |
 | [tests/build_samples.py](../tests/build_samples.py) | Optional cross-compilation of known-source executable samples |
-| [.github/workflows/ci.yml](../.github/workflows/ci.yml) | Run the build/test workflow on Linux and macOS |
+| [tests/linkage_fixtures.py](../tests/linkage_fixtures.py) | Construct ELF/Mach-O dependencies and symbol tables |
+| [.github/workflows/ci.yml](../.github/workflows/ci.yml) | Verify parsers and package installation on Linux and macOS |
+| [.github/workflows/fuzz-nightly.yml](../.github/workflows/fuzz-nightly.yml) | Longer scheduled fuzzing with cached coverage inputs and saved diagnostics |
 
 Python's `struct.pack` creates serialized fields; `pack_into` edits a field at an
 explicit offset in a mutable `bytearray`. `<`, `>`, `H`, `I`, and `Q` describe byte
@@ -287,8 +311,18 @@ repeatable; coverage-guided fuzzing retains inputs that explore new paths.
 Neither technique replaces fixed regression cases with known expected results.
 
 The C unit tests use `assert`, so keep `NDEBUG` undefined when running them.
-Expected negative entropy tests print work-limit/range errors before reporting
-that the test executable passed.
+Expected negative entropy and parser-budget tests print work-limit/range errors
+before reporting that the test executable passed. `make test` runs the C unit
+programs, CLI regressions, distribution/packaging checks, the permanent corpus,
+and a generated universal-file allocation test. `make sanitize` repeats those
+checks in separate ASan/UBSan build directories.
+
+`make valgrind` on Linux and `make leaks` on macOS build ordinary debug binaries,
+run functional tests, then check cleanup on the unit programs and parser inputs.
+Apple's `leaks` returns its own exit status rather than the inspected program's,
+so functional status checks are separate. The deliberate-leak probe must be
+detected before clean memory-check results are accepted. These targets remain
+optional for ordinary local builds; Linux CI also runs Valgrind.
 
 In the Makefile, compilation produces `.o` files and linking joins them into an
 executable. Generated `.d` files track header dependencies. The comments explain
@@ -302,9 +336,10 @@ well as sample bytes, so even a comment-only source edit changes the recorded
 source checksum. JSON manifests and executable fixtures cannot contain ordinary
 C/Python comments; their explanations belong here and in the sample README.
 
-Release preparation is described in [RELEASING.md](RELEASING.md). The VERSION
-file feeds a compiler macro; install/uninstall use a staging prefix, and
-`scripts/package_release.py` creates archives without tagging or publishing.
+The VERSION file feeds the CLI's version macro. Install/uninstall use a staging
+prefix, and `scripts/package_release.py` creates host binary archives. Shared
+release and distribution instructions are in
+[packaging/README.md](../packaging/README.md).
 
 ## Distribution packaging
 
@@ -312,7 +347,37 @@ file feeds a compiler macro; install/uninstall use a staging prefix, and
 `dpkg-buildpackage`. Debhelper's rules run tests, stage `/usr/bin/coffin`, and
 compute runtime library dependencies. `make homebrew` creates a normalized
 source archive and renders a formula using its actual SHA-256 checksum.
-`tests/test_packaging.py` verifies source contents and checksums without installs.
+The source export is handled by `scripts/package_source.py`. It includes current
+source bytes and a `.coffin-source-files` manifest containing filenames and the
+source timestamp, so an extracted release can rebuild without `.git`.
+`scripts/package_deb.py` drives Debian builds; `scripts/package_homebrew.py`
+renders `packaging/homebrew/coffin.rb.in` with the archive's real checksum.
+
+`tests/test_packaging.py` verifies source contents, checksums, and Git-free
+re-exporting without installing software. `tests/test_deb.py` exercises Debian
+install/remove/reinstall/purge in a disposable container; `tests/test_homebrew.py`
+checks source installation, formula tests, reinstallation, and removal using a
+temporary tap. Both refuse to replace an existing Coffin installation.
 The explicit Debian/Homebrew installation tests run in dedicated CI jobs; they
 remove only packages and temporary taps they created. See
 [packaging/README.md](../packaging/README.md) for commands and release boundaries.
+
+## CI and release artifacts
+
+The main workflow tests on Ubuntu 24.04 and `macos-latest`. Its actions use the
+Node.js 24 runtime; this runtime belongs to GitHub Actions and is not a dependency
+of the C executable. Linux rebuilds ELF/PE fixtures and macOS rebuilds Mach-O
+fixtures. Independent tools, sanitizers, and deterministic mutation checks run
+on both platforms; Linux also runs Valgrind and a coverage-guided fuzz smoke run.
+Older LLVM versions can omit extended-count ELF program headers. The differential
+suite prints a note and uses GNU readelf for that table on the original input;
+other LLVM comparisons remain active.
+
+After the parser matrix passes, package jobs exercise a Debian amd64 package in
+a Debian bookworm container and a source-based Homebrew formula on macOS.
+Successful package jobs save downloadable candidate artifacts. A tag matching
+`v` plus VERSION also builds host binary archives and enables the
+`release-candidates` job. That job waits for both the parser matrix and package
+jobs before collecting verified artifacts. Ordinary branch/PR runs skip that
+final collection job. Creating tags, publishing a GitHub Release, and updating a
+Homebrew tap remain separate maintainer actions.
