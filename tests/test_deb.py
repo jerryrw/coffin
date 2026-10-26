@@ -41,14 +41,20 @@ def main():
         for attempt in range(2):
             # Mark ownership before installation so a partial failure gets purged.
             installed = True
-            subprocess.run(['dpkg', '--install', str(package)], check=True)
+            # Debian slim images exclude /usr/share/man/* in dpkg's config.
+            # Override that filter for this install so we test the actual manual,
+            # without changing the container's persistent dpkg configuration.
+            subprocess.run(['dpkg', '--path-include=/usr/share/man/*',
+                            '--install', str(package)], check=True)
             assert run(binary, '--version') == 'coffin ' + (ROOT / 'VERSION').read_text().strip()
             owned = [Path(name) for name in run('dpkg-query', '-L', 'coffin').splitlines()
                      if Path(name).is_file() or Path(name).is_symlink()]
             assert binary in owned and any('/usr/share/doc/coffin/' in str(p) for p in owned)
             page = Path('/usr/share/man/man1/coffin.1.gz')
-            assert page in owned, (
-                f'Missing installed manual: {page}\n'
+            package_paths = run('dpkg-query', '-L', 'coffin').splitlines()
+            assert str(page) in package_paths, f'Manual absent from package file list: {page}'
+            assert page.is_file(), (
+                f'Manual listed by dpkg but missing on disk: {page}; check dpkg path filters.\n'
                 + 'Package paths:\n' + run('dpkg-query', '-L', 'coffin'))
             assert gzip.decompress(page.read_bytes()) == (ROOT / 'docs/coffin.1').read_bytes()
             for name, kind in (('hello-elf64', 'ELF'), ('hello-pe64.exe', 'PE'), ('hello-mach-arm64', 'Mach-O')):

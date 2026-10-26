@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Override slim-container man-page exclusion during Debian lifecycle tests
+  and distinguish package ownership from files actually installed on disk.
+
 - Install the Debian manual explicitly and verify its compressed path during
   packaging, with package-path diagnostics on installation test failures.
 
