@@ -47,7 +47,9 @@ def main():
                      if Path(name).is_file() or Path(name).is_symlink()]
             assert binary in owned and any('/usr/share/doc/coffin/' in str(p) for p in owned)
             page = Path('/usr/share/man/man1/coffin.1.gz')
-            assert page in owned
+            assert page in owned, (
+                f'Missing installed manual: {page}\n'
+                + 'Package paths:\n' + run('dpkg-query', '-L', 'coffin'))
             assert gzip.decompress(page.read_bytes()) == (ROOT / 'docs/coffin.1').read_bytes()
             for name, kind in (('hello-elf64', 'ELF'), ('hello-pe64.exe', 'PE'), ('hello-mach-arm64', 'Mach-O')):
                 source = ROOT / name

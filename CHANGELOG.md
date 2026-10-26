@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Install the Debian manual explicitly and verify its compressed path during
+  packaging, with package-path diagnostics on installation test failures.
+
 - Add a coffin(1) manual page to source installs, release archives, Debian, and
   Homebrew packages, with installation and removal checks.
 
