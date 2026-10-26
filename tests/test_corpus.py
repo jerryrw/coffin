@@ -16,5 +16,9 @@ for case, path, data in corpus_cases():
                    ('Sanitizer', 'runtime error:', 'LeakSanitizer')), (path, result.stderr)
     if case['exit'] == 0:
         assert hashlib.sha256(data).hexdigest() in result.stdout, path
+    for text in case.get('stdout_contains', []):
+        assert text in result.stdout, (path, text, result.stdout)
+    for text in case.get('stderr_contains', []):
+        assert text in result.stderr, (path, text, result.stderr)
     count += 1
 print(f'Permanent regression corpus passed: {count} cases')

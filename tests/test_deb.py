@@ -5,6 +5,7 @@ refuses to replace one and checks every installed non-directory package path.
 """
 import argparse
 import hashlib
+import gzip
 import os
 from pathlib import Path
 import subprocess
@@ -31,7 +32,8 @@ def main():
     if existing.returncode == 0:
         parser.error('An existing Coffin package is registered; refusing to replace it')
     binary = Path('/usr/bin/coffin')
-    if binary.exists() or binary.is_symlink() or Path('/usr/share/doc/coffin').exists():
+    if (binary.exists() or binary.is_symlink() or Path('/usr/share/doc/coffin').exists()
+            or any(Path('/usr/share/man/man1').glob('coffin.1*'))):
         parser.error('Existing Coffin files would be replaced')
     installed = False
     owned = []
@@ -39,11 +41,22 @@ def main():
         for attempt in range(2):
             # Mark ownership before installation so a partial failure gets purged.
             installed = True
-            subprocess.run(['dpkg', '--install', str(package)], check=True)
+            # Debian slim images exclude /usr/share/man/* in dpkg's config.
+            # Override that filter for this install so we test the actual manual,
+            # without changing the container's persistent dpkg configuration.
+            subprocess.run(['dpkg', '--path-include=/usr/share/man/*',
+                            '--install', str(package)], check=True)
             assert run(binary, '--version') == 'coffin ' + (ROOT / 'VERSION').read_text().strip()
             owned = [Path(name) for name in run('dpkg-query', '-L', 'coffin').splitlines()
                      if Path(name).is_file() or Path(name).is_symlink()]
             assert binary in owned and any('/usr/share/doc/coffin/' in str(p) for p in owned)
+            page = Path('/usr/share/man/man1/coffin.1.gz')
+            package_paths = run('dpkg-query', '-L', 'coffin').splitlines()
+            assert str(page) in package_paths, f'Manual absent from package file list: {page}'
+            assert page.is_file(), (
+                f'Manual listed by dpkg but missing on disk: {page}; check dpkg path filters.\n'
+                + 'Package paths:\n' + run('dpkg-query', '-L', 'coffin'))
+            assert gzip.decompress(page.read_bytes()) == (ROOT / 'docs/coffin.1').read_bytes()
             for name, kind in (('hello-elf64', 'ELF'), ('hello-pe64.exe', 'PE'), ('hello-mach-arm64', 'Mach-O')):
                 source = ROOT / name
                 output = run(binary, '--headers', '--sections', source)

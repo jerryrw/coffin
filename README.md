@@ -13,6 +13,29 @@ The project grew out of learning PE internals and malware analysis, with the aim
 of making executable structure easier to explore from a Linux terminal. It is
 under active development; supported formats and current limits are listed below.
 
+## Install on Debian
+
+Download the `.deb` and its matching `.deb.sha256` file from the
+[latest GitHub release](https://github.com/jerryrw/coffin/releases/latest).
+The published Debian package is for `amd64` (64-bit x86); check your machine with
+`dpkg --print-architecture`. Debian 12 is the package CI baseline.
+
+In the directory containing the downloads, for the first package release:
+
+```sh
+sha256sum -c coffin_0.1.1-1_amd64.deb.sha256
+sudo apt install ./coffin_0.1.1-1_amd64.deb
+coffin --version
+coffin --summary /usr/bin/ls
+```
+
+Use matching filenames for newer releases. Install a newer downloaded package
+with the same `sudo apt install ./...deb` command. Remove it with
+`sudo apt remove coffin`. Packages are downloaded manually; an APT repository
+and automatic package updates are not configured. The
+[Debian installation guide](packaging/README.md#install-a-release) includes
+compatibility, path troubleshooting, and removal details.
+
 ## Quick start
 
 Requires a C11 compiler, Make, the system math library, and iconv headers/library
@@ -224,9 +247,14 @@ ambiguous overlapping RVA mappings are rejected. Directory strings must
 terminate within 4,096 bytes; displayed strings are shortened with an ellipsis
 when needed, and control bytes in import/export names are escaped. Resource
 names accept up to 4,096 UTF-16 code units. Parsing is bounded by 100,000 RVA
-lookups, 4,096 resource reads, a resource depth of 16, and a resource display path
-of 767 bytes. Malformed directory structures and inputs exceeding these work
-limits fail with an error rather than producing a partial report.
+lookups, 4,096 resource-directory reads, a resource depth of 16, and a resource display path
+of 767 bytes. The root counts as directory level one: levels one through sixteen
+are accepted and a seventeenth is rejected. A repeated reference to a subtree or
+data entry is allowed when it does not lead back to an ancestor. Every visit
+still consumes the read allowance; sharing offsets cannot bypass it. Depth/read
+exhaustion and ancestor cycles have distinct diagnostics. Malformed directory
+structures and inputs exceeding these limits fail before a report or resource
+extraction directory is created.
 
 ### ELF and Mach-O linkage
 
@@ -398,10 +426,13 @@ make package
 ```
 
 The version comes from [VERSION](VERSION). Installation supports `PREFIX`,
-`BINDIR`, `DOCDIR`, and `DESTDIR`; the default prefix is `/usr/local`. Install
-copies the executable and documentation; uninstall removes just those files.
+`BINDIR`, `DOCDIR`, `MANDIR`, and `DESTDIR`; the default prefix is `/usr/local`. Install
+copies the executable, documentation, and `coffin(1)` manual page; uninstall removes just those files.
+Read the installed manual with `man coffin`, or preview it before installing with
+`man ./docs/coffin.1`. For a custom prefix, your system may require adding
+`PREFIX/share/man` to its manual search path.
 `make package` creates an OS/CPU-specific archive and checksum in `dist/`.
-See the [changelog](CHANGELOG.md) and [release checklist](docs/RELEASING.md),
+See the [changelog](CHANGELOG.md) and [release checklist](packaging/README.md#version-and-tag-sequence),
 including Linux/macOS verification and the tag-gated release-candidate workflow.
 Preparing these files does not publish a release.
 
@@ -469,15 +500,16 @@ and unit-test binaries; use `make BUILD_DIR=obj/sanitize BIN_DIR=bin/sanitize cl
 ### Debian and Homebrew packages
 
 `make deb` builds a native `.deb` on Debian/Ubuntu with `build-essential`,
-`debhelper`, `dpkg-dev`, and `python3` installed. `make homebrew` creates a source
-archive and a Homebrew formula with its SHA-256 checksum. Both write to `dist/`.
-These commands prepare packages; they do not install or publish them.
+`debhelper`, `dpkg-dev`, and `python3` installed. Output goes to `dist/`; this
+command builds and tests the package without installing or publishing it.
 
-CI tests Debian installation/removal in a clean container and Homebrew source
-installation, formula tests, reinstallation, and removal in a temporary macOS
-tap. Package artifacts are downloadable from successful workflows. The
-[packaging guide](packaging/README.md) covers local commands, supported baselines,
-and the steps to publish a reviewed release and Homebrew tap.
+CI tests Debian installation, removal, reinstallation, and purge in a clean
+container. Package artifacts are downloadable from successful workflows.
+Homebrew CI tests source installation, formula checks, reinstallation, and
+removal in a disposable macOS tap. It uses the Debian job's exact source archive
+so the generated formula checksum matches the published source asset.
+`make homebrew` prepares an archive and formula for local use. Publishing the
+Homebrew tap is a separate step; see the [packaging guide](packaging/README.md).
 
 ### Memory leak checks
 
@@ -507,6 +539,7 @@ Valgrind itself does not support Apple Silicon macOS.
 make test
 make sanitize
 make differential
+make stress
 make fuzz-smoke
 ```
 
@@ -535,6 +568,20 @@ inputs with SHA-256 checksums, expected status, and an explanation per case.
 `make test` and `make sanitize` run it with timeouts. Budget unit tests cover
 exact boundaries and shared counters; a generated universal Mach-O verifies
 that valid individual slices cannot each reset the allocation allowance.
+
+`make stress` runs generated hostile-input tests with per-process timeouts.
+They check six-figure table boundaries, repeated long-name references across
+universal slices, shared allocation budgets, repeated raw ranges with exact
+entropy-cache read counts, ambiguous PE/ELF mappings, and one-byte slice overlap.
+PE32/PE32+ cases also cover resource depth, root/non-root/self cycles, repeated
+leaves, shared subtrees, and multiplicative reference expansion. Boundary controls
+fit 4,095 resource reads; the next larger cases exceed the 4,096-read allowance.
+Rejected resource trees must not create extraction output. Valid shared references
+must retain every path and extract into separate files with identical payload bytes.
+Valid controls remain accepted; rejected cases run twice and must produce the
+same diagnostics, exit 1, and no partial report. These tests are also included
+in `make test` and `make sanitize`. Large fixtures are generated temporarily;
+small controls and overlap regressions are frozen in the permanent corpus.
 
 To measure focused versus section reporting on a large input:
 
@@ -608,9 +655,15 @@ artifacts under `bin/fuzz/`. Increase `--runs` for a longer run. Inputs are capp
 Reproduce a libFuzzer crash with `bin/fuzz/coffin-fuzz path/to/crash-artifact`,
 then preserve the minimized bytes and expected behavior in `tests/corpus/`
 and add a focused assertion for the original failure. The
-[release/fuzzing guide](docs/RELEASING.md#longer-fuzzing-and-failure-follow-up)
-explains minimization and the separate 30-minute daily fuzz workflow, retained
-corpus, and diagnostic artifacts. For a timed local run, use `--seconds 1800`
+[corpus guide](tests/corpus/README.md) explains promotion into fixed regression
+cases. To minimize a crashing input before adding it:
+
+```sh
+bin/fuzz/coffin-fuzz -minimize_crash=1 -exact_artifact_path=/tmp/coffin-minimized path/to/crash-artifact
+```
+
+The [daily fuzz workflow](.github/workflows/fuzz-nightly.yml) runs for 30 minutes
+and retains its evolving corpus and diagnostic artifacts. For a timed local run, use `--seconds 1800`
 instead of `--runs`; both limits may be supplied to stop at the first one reached.
 
 ### Continuous integration

@@ -23,6 +23,7 @@ def main():
     # Use deliberate member names: no absolute paths, fixtures, corpora, or secrets.
     with tarfile.open(archive, 'w:gz') as bundle:
         bundle.add(args.binary, arcname=name + '/bin/coffin', recursive=False)
+        bundle.add(ROOT / 'docs/coffin.1', arcname=name + '/share/man/man1/coffin.1', recursive=False)
         for filename in ('README.md', 'License', 'CHANGELOG.md', 'VERSION'):
             bundle.add(ROOT / filename, arcname=name + '/' + filename, recursive=False)
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()

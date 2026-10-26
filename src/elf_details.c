@@ -65,7 +65,10 @@ static int symbol_table(const InputFile *input, ELFInfo *info, uint64_t offset,
                 /* Search once per table, not once per symbol. Charge the scan
                  * against the same bounded metadata work allowance as strings. */
                 if (parser_lookup_work(input, info->section_count) != STATUS_SUCCESS) return STATUS_ERROR;
-                if (info->section_count > 16u * 1024u * 1024u - *work) return STATUS_ERROR;
+                if (info->section_count > 16u * 1024u * 1024u - *work) {
+                    fprintf(stderr, "Parser resource limit exceeded: ELF extended-index scan work\n");
+                    return STATUS_ERROR;
+                }
                 *work += info->section_count;
                 for (unsigned j = 0; j < info->section_count; ++j) {
                     const SectionHeader *h = &info->section_headers[j];

@@ -12,6 +12,9 @@ The inspector reads executable bytes as data. It does not execute the file being
 inspected. The tests separately run selected known-source Hello World fixtures
 when the host or an installed emulator supports them.
 
+The command-line reference is [coffin(1)](coffin.1), also available after
+installation with `man coffin`.
+
 ## Suggested reading order
 
 | Read | What to look for |
@@ -221,6 +224,14 @@ It avoids computing `offset + length`, which could wrap. Table counts are widene
 before multiplication, and allocation helpers bound the number of bytes before
 allocating them. Every `read_at` requires an exact read; short reads are errors.
 
+PE resource traversal tracks offsets only along the current ancestor path.
+A shared subtree reached from another branch is permitted; reaching an ancestor
+is a cycle and is rejected. Every visit, including a revisit, consumes a resource
+read. The root is level one, so sixteen directory levels fit the recursion budget.
+`tests/test_stress.py` checks both PE widths, exact boundary failures, and that
+resource parsing errors occur before extraction creates a directory. Shared
+payloads still produce distinct path records and extracted files.
+
 Valid byte ranges alone do not bound computation. A resource tree could cycle,
 and many sections could repeatedly reference the same bytes. Work/depth limits
 and entropy caching prevent these structures from requesting unlimited work.
@@ -286,6 +297,7 @@ values to simplify or change when learning the code.
 | [tests/fuzz_parser.c](../tests/fuzz_parser.c) | Send generated/mutated byte buffers through real parsing paths |
 | [tests/test_limits.c](../tests/test_limits.c) | Allocation, metadata I/O, and lookup budget boundaries |
 | [tests/test_corpus.py](../tests/test_corpus.py) | Frozen checksummed inputs, expected status, timeouts |
+| [tests/test_stress.py](../tests/test_stress.py), [tests/stress_fixtures.py](../tests/stress_fixtures.py) | Generate hostile inputs and check stable rejection, table boundaries, and entropy-cache work |
 | [tests/test_parser_limits.py](../tests/test_parser_limits.py) | Shared allocation budget across universal slices |
 | [tests/test_differential.py](../tests/test_differential.py) | Compare metadata and malformed-header rejection against independent binary tools |
 | [tests/test_differential_parser.py](../tests/test_differential_parser.py) | GNU/LLVM output differences and the extended-numbering fallback |
@@ -314,7 +326,8 @@ The C unit tests use `assert`, so keep `NDEBUG` undefined when running them.
 Expected negative entropy and parser-budget tests print work-limit/range errors
 before reporting that the test executable passed. `make test` runs the C unit
 programs, CLI regressions, distribution/packaging checks, the permanent corpus,
-and a generated universal-file allocation test. `make sanitize` repeats those
+and generated hostile-input stress tests. `make stress` runs the hostile-input
+suites alone, including the universal-file allocation test. `make sanitize` repeats those
 checks in separate ASan/UBSan build directories.
 
 `make valgrind` on Linux and `make leaks` on macOS build ordinary debug binaries,
@@ -345,8 +358,8 @@ release and distribution instructions are in
 
 `make deb` exports source into a disposable directory and runs Debian's
 `dpkg-buildpackage`. Debhelper's rules run tests, stage `/usr/bin/coffin`, and
-compute runtime library dependencies. `make homebrew` creates a normalized
-source archive and renders a formula using its actual SHA-256 checksum.
+compute runtime library dependencies. `make source-package` creates a normalized
+source archive. `make homebrew` also renders a formula using the archive checksum.
 The source export is handled by `scripts/package_source.py`. It includes current
 source bytes and a `.coffin-source-files` manifest containing filenames and the
 source timestamp, so an extracted release can rebuild without `.git`.
@@ -358,8 +371,8 @@ re-exporting without installing software. `tests/test_deb.py` exercises Debian
 install/remove/reinstall/purge in a disposable container; `tests/test_homebrew.py`
 checks source installation, formula tests, reinstallation, and removal using a
 temporary tap. Both refuse to replace an existing Coffin installation.
-The explicit Debian/Homebrew installation tests run in dedicated CI jobs; they
-remove only packages and temporary taps they created. See
+Debian and Homebrew installation tests run in dedicated CI jobs and can also
+run manually. Both remove only packages and temporary taps they created. See
 [packaging/README.md](../packaging/README.md) for commands and release boundaries.
 
 ## CI and release artifacts
@@ -373,11 +386,13 @@ Older LLVM versions can omit extended-count ELF program headers. The differentia
 suite prints a note and uses GNU readelf for that table on the original input;
 other LLVM comparisons remain active.
 
-After the parser matrix passes, package jobs exercise a Debian amd64 package in
-a Debian bookworm container and a source-based Homebrew formula on macOS.
-Successful package jobs save downloadable candidate artifacts. A tag matching
+After the parser matrix passes, the package job exercises a Debian amd64 package
+in a Debian bookworm container and saves downloadable candidate artifacts.
+The Homebrew job then downloads that same source archive, verifies its checksum,
+generates a matching formula, and tests installation/reinstallation/removal on
+macOS. A tag matching
 `v` plus VERSION also builds host binary archives and enables the
-`release-candidates` job. That job waits for both the parser matrix and package
+`release-candidates` job. That job waits for the parser matrix and both package
 jobs before collecting verified artifacts. Ordinary branch/PR runs skip that
-final collection job. Creating tags, publishing a GitHub Release, and updating a
-Homebrew tap remain separate maintainer actions.
+final collection job. Creating tags and publishing a GitHub Release remain
+separate maintainer actions.

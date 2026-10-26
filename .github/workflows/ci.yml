@@ -83,7 +83,9 @@ jobs:
       # Register this exact workspace in the HOME used by subsequent steps.
       - name: Trust the mounted checkout for packaging Git queries
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - run: make deb
+      - run: |
+          make deb
+          make source-package
       - name: Install, exercise, remove, and reinstall the Debian package
         run: python3 tests/test_deb.py dist/coffin_*_amd64.deb
       - uses: actions/upload-artifact@v6
@@ -92,10 +94,14 @@ jobs:
           path: |
             dist/*.deb
             dist/*.deb.sha256
+            dist/*-source.tar.gz
+            dist/*-source.tar.gz.sha256
           if-no-files-found: error
 
+  # Reuse the Debian job's source archive: the formula must reference the exact
+  # bytes collected as release assets, even when built on another operating system.
   homebrew-package:
-    needs: test
+    needs: debian-package
     runs-on: macos-latest
     timeout-minutes: 20
     steps:
@@ -103,16 +109,21 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.x'
-      - run: make homebrew
+      - uses: actions/download-artifact@v7
+        with:
+          name: candidate-debian
+          path: dist
+      - name: Verify the shared source archive
+        working-directory: dist
+        run: shasum -a 256 -c coffin-*-source.tar.gz.sha256
+      - name: Generate the release formula from the shared archive
+        run: python3 scripts/package_homebrew.py dist/coffin-*-source.tar.gz
       - name: Install, test, reinstall, and uninstall from a disposable tap
         run: python3 tests/test_homebrew.py dist/coffin-*-source.tar.gz
       - uses: actions/upload-artifact@v6
         with:
           name: candidate-homebrew
-          path: |
-            dist/coffin.rb
-            dist/*-source.tar.gz
-            dist/*-source.tar.gz.sha256
+          path: dist/coffin.rb
           if-no-files-found: error
 
   release-candidates:

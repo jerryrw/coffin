@@ -315,8 +315,12 @@ done:
  */
 static int resource_read(PEReader *r, uint64_t relative, void *out, size_t size)
 {
-    if (++r->resource_work > RESOURCE_WORK_LIMIT ||
-        !file_range_valid(relative, size, r->resource_size)) return STATUS_ERROR;
+    if (r->resource_work >= RESOURCE_WORK_LIMIT) {
+        fprintf(stderr, "Parser resource limit exceeded: PE resource directory reads (%u)\n", RESOURCE_WORK_LIMIT);
+        return STATUS_ERROR;
+    }
+    ++r->resource_work;
+    if (!file_range_valid(relative, size, r->resource_size)) return STATUS_ERROR;
     return parser_read(r->input, r->resource_offset + relative, out, size);
 }
 
@@ -406,9 +410,16 @@ static int resource_label(PEReader *r, uint32_t value, unsigned depth, char out[
 static int resource_tree(PEReader *r, uint32_t relative, unsigned depth, const char *path)
 {
     unsigned char header[16], entry[8], data[16];
-    if (depth >= RESOURCE_DEPTH) return STATUS_ERROR;
-    for (unsigned i = 0; i < depth; ++i)
-        if (r->ancestors[i] == relative) return STATUS_ERROR;
+    if (depth >= RESOURCE_DEPTH) {
+        fprintf(stderr, "Parser resource limit exceeded: PE resource directory depth (%u levels)\n", RESOURCE_DEPTH);
+        return STATUS_ERROR;
+    }
+    for (unsigned i = 0; i < depth; ++i) {
+        if (r->ancestors[i] == relative) {
+            fprintf(stderr, "Invalid PE resource directory: ancestor cycle\n");
+            return STATUS_ERROR;
+        }
+    }
     /*
      * Only ancestors matter for cycle detection: two different branches may
      * legitimately refer to the same subtree without forming a cycle.

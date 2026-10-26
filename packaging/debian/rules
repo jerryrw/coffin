@@ -15,7 +15,16 @@ override_dh_auto_test:
 	$(MAKE) test
 
 override_dh_auto_install:
-	$(MAKE) install DESTDIR=$(CURDIR)/debian/coffin PREFIX=/usr
+	$(MAKE) install DESTDIR=$(CURDIR)/debian/coffin PREFIX=/usr MANDIR=/usr/share/man
+
+# Explicitly register the upstream manual instead of relying only on staged files.
+override_dh_installman:
+	dh_installman --language=C docs/coffin.1
+
+# Fail during packaging if the public manual path is missing or misplaced.
+override_dh_compress:
+	dh_compress
+	test -f debian/coffin/usr/share/man/man1/coffin.1.gz
 
 override_dh_strip:
 	dh_strip --no-automatic-dbgsym

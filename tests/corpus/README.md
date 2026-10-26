@@ -5,7 +5,9 @@ in Git so changes to fixture builders cannot silently change old regression
 cases. No collected malware or third-party executable is included here.
 
 `manifest.json` records each file's SHA-256, expected CLI exit status, reason,
-and independent tools approved for comparing it. Successful cases must produce
+and independent tools approved for comparing it. Optional `stdout_contains` and
+`stderr_contains` lists preserve case-specific findings and diagnostics.
+Successful cases must produce
 a report with the correct hash; rejected cases must exit 1 without a report.
 The CLI runner enforces a ten-second timeout and rejects sanitizer diagnostics.
 `make test` and `make sanitize` run all cases. Valgrind/macOS leaks checks and
@@ -16,9 +18,14 @@ resource-directory cycle or enforce Coffin's own limits.
 Coverage includes PE resources, delay imports, icon/cursor groups, legacy text,
 ELF linkage and extended numbering in both widths/orders, literal versioned
 static symbols, thin/universal Mach-O, truncated inputs, a resource cycle, and
-overlapping universal slices. The readelf text-format regressions (plain-zero
+overlapping universal slices, including one-byte overlap and adjacent valid
+slices. PE raw-range aliases and ambiguous PE/ELF address maps have separate
+acceptance/rejection controls. PE32/PE32+ depth-16 controls, depth-17 rejections,
+non-root cycles, shared subtrees, and reference-amplification inputs preserve
+explicit expectations for resource traversal. The readelf text-format regressions (plain-zero
 alignment and static/dynamic version suffixes) are in `test_differential_parser.py`.
-Generated large-input resource-limit tests live in `test_parser_limits.py` so
+Generated large-input resource-limit tests live in `test_parser_limits.py` and
+`test_stress.py` so
 large files do not need to be stored in Git.
 
 ## Add a discovered failure

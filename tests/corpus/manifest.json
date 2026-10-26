@@ -337,5 +337,172 @@
     "exit": 1,
     "reason": "Reject overlapping universal Mach-O slices.",
     "differential": []
+  },
+  {
+    "file": "pe-shared-raw-ranges.bin",
+    "sha256": "1f6cd065b3a28f94c96e932099f3656bdaa4ec4029a4487fc4a4af19a5b26e4c",
+    "exit": 0,
+    "reason": "Distinct PE RVAs can share physical payload bytes; retain every section.",
+    "differential": [],
+    "stdout_contains": [
+      "Counts: 3 sections"
+    ]
+  },
+  {
+    "file": "pe-ambiguous-directory-rvas.bin",
+    "sha256": "5746576cfcd080fa9bc5b30bd6d22be0e1ec0091daf779460486e8073690c2fa",
+    "exit": 1,
+    "reason": "A directory cannot map through overlapping RVA sections.",
+    "differential": [],
+    "stderr_contains": [
+      "Invalid PE"
+    ]
+  },
+  {
+    "file": "elf-dynamic-address-control.bin",
+    "sha256": "f98b5e1abb3a6795be665b38a1d3f0112b72215dc6dde9ff93ce06a9679dc332",
+    "exit": 0,
+    "reason": "Resolve DT_NEEDED through one unambiguous LOAD range.",
+    "differential": [],
+    "stdout_contains": [
+      "libstress.so"
+    ]
+  },
+  {
+    "file": "elf-ambiguous-dynamic-loads.bin",
+    "sha256": "6ba103f1d7c3db2af2dc3dca78ef19c3f71ef28f252e9f702f25f5140384502b",
+    "exit": 1,
+    "reason": "Overlapping LOAD ranges make dynamic addresses ambiguous.",
+    "differential": [],
+    "stderr_contains": [
+      "Invalid"
+    ]
+  },
+  {
+    "file": "mach-adjacent-slices.bin",
+    "sha256": "8e89cfab7218425da6846e6633c5c00b1b996eaac070355ce390ed55fe6696ef",
+    "exit": 0,
+    "reason": "Adjacent nonoverlapping slices must remain accepted.",
+    "differential": [],
+    "stdout_contains": [
+      "Slice 1:",
+      "Slice 2:"
+    ]
+  },
+  {
+    "file": "mach-one-byte-overlap.bin",
+    "sha256": "85deec3f95e37e0ac47db2fc85cb6a66462748f58d5c00836e76ac6661d46200",
+    "exit": 1,
+    "reason": "Reject a single byte of universal-slice overlap.",
+    "differential": [],
+    "stderr_contains": [
+      "Invalid"
+    ]
+  },
+  {
+    "file": "pe32-resource-depth16.bin",
+    "sha256": "213b13f93fd3f6f35fde002fa8da5675f936b7f04b56287fd3a16f3b12338e9d",
+    "exit": 0,
+    "reason": "Sixteen directory levels including the root remain inspectable.",
+    "differential": [],
+    "stdout_contains": [
+      "RCDATA(#10)/#1/#1/#1/#1/#1/#1/#1/#1/#1/#1/#1/#1/#1/#1/#1"
+    ]
+  },
+  {
+    "file": "pe32-resource-depth17.bin",
+    "sha256": "673aed906bcdba79fab13df89ea83ef2b985347dd9f7d020200283b4b5f4b354",
+    "exit": 1,
+    "reason": "Reject the seventeenth directory level with an explicit depth limit.",
+    "differential": [],
+    "stderr_contains": [
+      "Parser resource limit exceeded: PE resource directory depth (16 levels)"
+    ]
+  },
+  {
+    "file": "pe32-resource-shared-subtree.bin",
+    "sha256": "99be952536c4d140d5193010f36d20d3e1112b02f6266fb788a5002c17d09c0e",
+    "exit": 0,
+    "reason": "Repeated references are not cycles: retain separate name/language paths.",
+    "differential": [],
+    "stdout_contains": [
+      "RCDATA(#10)/#1/#1033",
+      "RCDATA(#10)/#1/#1034",
+      "RCDATA(#10)/#2/#1033",
+      "RCDATA(#10)/#2/#1034"
+    ]
+  },
+  {
+    "file": "pe32-resource-ancestor-cycle.bin",
+    "sha256": "74e907e5f78339bd6489efd905e8a5aa68484fd4c59a9c4bfce3bbf3dfaae36a",
+    "exit": 1,
+    "reason": "Reject a non-root ancestor cycle, separately from depth/read exhaustion.",
+    "differential": [],
+    "stderr_contains": [
+      "Invalid PE resource directory: ancestor cycle"
+    ]
+  },
+  {
+    "file": "pe32-resource-reference-amplification.bin",
+    "sha256": "b23fdbf1ddcef8500d94c972a831ed23bd48601462f823cac7a4510f2ec80bed",
+    "exit": 1,
+    "reason": "Repeated visits exceed the 4096-read allowance despite a small on-disk graph.",
+    "differential": [],
+    "stderr_contains": [
+      "Parser resource limit exceeded: PE resource directory reads (4096)"
+    ]
+  },
+  {
+    "file": "pe64-resource-depth16.bin",
+    "sha256": "14bc7694417371ddcee4f31e0823566a5ec63d91baf23b050dccef58a34ad46a",
+    "exit": 0,
+    "reason": "Sixteen directory levels including the root remain inspectable.",
+    "differential": [],
+    "stdout_contains": [
+      "RCDATA(#10)/#1/#1/#1/#1/#1/#1/#1/#1/#1/#1/#1/#1/#1/#1/#1"
+    ]
+  },
+  {
+    "file": "pe64-resource-depth17.bin",
+    "sha256": "5015cd763ee4e109d03113c6f3cbe52c8551f1ae3b0cce81886b3f69b6ccf5ee",
+    "exit": 1,
+    "reason": "Reject the seventeenth directory level with an explicit depth limit.",
+    "differential": [],
+    "stderr_contains": [
+      "Parser resource limit exceeded: PE resource directory depth (16 levels)"
+    ]
+  },
+  {
+    "file": "pe64-resource-shared-subtree.bin",
+    "sha256": "177145ee478fd25ed47031d6420b6277ff7cd27121fea51280fc91086e3b8f6f",
+    "exit": 0,
+    "reason": "Repeated references are not cycles: retain separate name/language paths.",
+    "differential": [],
+    "stdout_contains": [
+      "RCDATA(#10)/#1/#1033",
+      "RCDATA(#10)/#1/#1034",
+      "RCDATA(#10)/#2/#1033",
+      "RCDATA(#10)/#2/#1034"
+    ]
+  },
+  {
+    "file": "pe64-resource-ancestor-cycle.bin",
+    "sha256": "7b83c1d9baf5694143f71a1b7d3eda94be8dbcf49be433db37f73ccb63bed176",
+    "exit": 1,
+    "reason": "Reject a non-root ancestor cycle, separately from depth/read exhaustion.",
+    "differential": [],
+    "stderr_contains": [
+      "Invalid PE resource directory: ancestor cycle"
+    ]
+  },
+  {
+    "file": "pe64-resource-reference-amplification.bin",
+    "sha256": "99b4c0712ceba3d413202d54ea6cb4971bcb9c7cce6e9486fc3904dbdc679d70",
+    "exit": 1,
+    "reason": "Repeated visits exceed the 4096-read allowance despite a small on-disk graph.",
+    "differential": [],
+    "stderr_contains": [
+      "Parser resource limit exceeded: PE resource directory reads (4096)"
+    ]
   }
 ]
