@@ -49,6 +49,7 @@ TARGET = $(BIN_DIR)/coffin
 PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin
 DOCDIR ?= $(PREFIX)/share/doc/coffin
+MANDIR ?= $(PREFIX)/share/man
 INSTALL ?= install
 # wildcard finds source files. patsubst maps src/name.c to BUILD_DIR/name.o.
 # .d files record which headers each object depends on; LIBSRC omits CLI main
@@ -60,7 +61,7 @@ LIBSRC = $(filter-out src/main.c,$(SRC))
 
 # Phony targets are actions, not expected output files. "all" is the default
 # action because it is the first ordinary target in this Makefile.
-.PHONY: all default clean test sanitize fuzz fuzz-smoke samples differential install uninstall package valgrind leaks memory-check source-package homebrew deb
+.PHONY: all default clean test sanitize fuzz fuzz-smoke samples differential install uninstall package valgrind leaks memory-check source-package homebrew deb stress
 all: $(TARGET)
 default: all
 
@@ -116,6 +117,7 @@ test: $(TARGET) $(BIN_DIR)/test-entropy $(BIN_DIR)/test-hashes $(BIN_DIR)/test-d
 	$(PYTHON) tests/test_packaging.py
 	$(PYTHON) tests/test_corpus.py $(TARGET)
 	$(PYTHON) tests/test_parser_limits.py $(TARGET)
+	$(PYTHON) tests/test_stress.py $(TARGET)
 
 # Recursive $(MAKE) builds into separate directories. ASan detects many invalid
 # memory accesses; UBSan checks undefined operations. -Werror also makes compiler
@@ -199,12 +201,14 @@ differential: $(TARGET)
 	$(PYTHON) tests/test_differential.py $(TARGET) $(DIFFERENTIAL_ARGS)
 
 install: $(TARGET)
-	$(INSTALL) -d "$(DESTDIR)$(BINDIR)" "$(DESTDIR)$(DOCDIR)"
+	$(INSTALL) -d "$(DESTDIR)$(BINDIR)" "$(DESTDIR)$(DOCDIR)" "$(DESTDIR)$(MANDIR)/man1"
 	$(INSTALL) -m 755 $(TARGET) "$(DESTDIR)$(BINDIR)/coffin"
+	$(INSTALL) -m 644 docs/coffin.1 "$(DESTDIR)$(MANDIR)/man1/coffin.1"
 	$(INSTALL) -m 644 README.md License CHANGELOG.md VERSION "$(DESTDIR)$(DOCDIR)/"
 
 # Remove only files installed by this target, leaving shared directories alone.
 uninstall:
+	rm -f "$(DESTDIR)$(MANDIR)/man1/coffin.1"
 	rm -f "$(DESTDIR)$(BINDIR)/coffin"
 	rm -f "$(DESTDIR)$(DOCDIR)/README.md" "$(DESTDIR)$(DOCDIR)/License" "$(DESTDIR)$(DOCDIR)/CHANGELOG.md" "$(DESTDIR)$(DOCDIR)/VERSION"
 
@@ -222,3 +226,8 @@ homebrew: source-package
 # Debian builds require Linux packaging tools; no installation is performed here.
 deb:
 	$(PYTHON) scripts/package_deb.py
+
+# Run only the bounded hostile-input suites; sanitizer's test target includes them.
+stress: $(TARGET)
+	$(PYTHON) tests/test_parser_limits.py $(TARGET)
+	$(PYTHON) tests/test_stress.py $(TARGET)

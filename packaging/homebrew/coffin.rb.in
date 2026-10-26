@@ -10,12 +10,13 @@ class Coffin < Formula
 
   def install
     system "make", "CC=#{ENV.cc}"
-    system "make", "install", "PREFIX=#{prefix}", "DOCDIR=#{doc}"
+    system "make", "install", "PREFIX=#{prefix}", "DOCDIR=#{doc}", "MANDIR=#{man}"
     # These known-source binaries are parser inputs; the test never executes them.
     (pkgshare/"test-fixtures").install "hello-elf64", "hello-pe64.exe", "hello-mach-arm64"
   end
 
   test do
+    assert_path_exists man1/"coffin.1"
     assert_equal "coffin #{version}", shell_output("#{bin}/coffin --version").strip
     { "hello-elf64" => "ELF", "hello-pe64.exe" => "PE", "hello-mach-arm64" => "Mach-O" }.each do |name, format|
       input = pkgshare/"test-fixtures"/name

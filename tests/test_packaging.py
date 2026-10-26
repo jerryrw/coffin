@@ -31,7 +31,7 @@ class PackagingTests(unittest.TestCase):
                 prefix = 'coffin-' + version() + '/'
                 members = {member.name.removeprefix(prefix): member for member in bundle.getmembers()}
                 self.assertTrue({'Makefile', 'src/main.c', 'VERSION', 'License',
-                                 'packaging/debian/rules', 'tests/corpus/manifest.json',
+                                 'docs/coffin.1', 'packaging/debian/rules', 'tests/corpus/manifest.json',
                                  'hello-pe64.exe'} <= members.keys())
                 self.assertFalse(any(name.startswith(('bin/', 'obj/', 'dist/', '.git/')) for name in members))
                 self.assertTrue(all(member.isfile() and member.name.startswith(prefix) and

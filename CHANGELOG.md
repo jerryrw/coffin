@@ -1,8 +1,25 @@
 # Changelog
 
-## 0.1.1 — Unreleased
+## Unreleased
 
-Release preparation for the first Debian and Homebrew distribution packages.
+- Add a coffin(1) manual page to source installs, release archives, Debian, and
+  Homebrew packages, with installation and removal checks.
+
+- Test PE32/PE32+ resource depth and repeated-reference boundaries, distinguish
+  ancestor cycles from resource-limit failures, and verify extraction cleanup.
+- Report PE resource depth/read exhaustion and ancestor cycles explicitly.
+
+- Verify Debian and Homebrew package installation in CI, sharing one source
+  archive so the formula checksum matches the release asset.
+- Document Debian download verification, installation, upgrades, and removal.
+- Expand hostile-input stress coverage for repeated references, large tables,
+  overlapping ranges, and deterministic resource-limit failures.
+- Explain ELF extended-index scan-budget exhaustion explicitly instead of
+  reporting only a generic invalid-input error.
+
+## 0.1.1
+
+First published package release, including Debian packages and Homebrew tooling.
 The existing `v0.1.0` tag predates those packages and remains unchanged.
 
 - Add native Debian packages and a source-based Homebrew formula, with

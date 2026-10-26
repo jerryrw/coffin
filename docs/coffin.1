@@ -1,0 +1,150 @@
+.TH COFFIN 1 "October 26, 2026" "coffin" "User Commands"
+.SH NAME
+coffin \- inspect PE, ELF, and Mach-O executable files
+.SH SYNOPSIS
+.B coffin
+.RI [ options ] " file"
+.SH DESCRIPTION
+.B coffin
+reads one executable file as data and prints a text report without executing it.
+Supported formats include PE32/PE32+, ELF32/ELF64 in either byte order,
+and thin or universal Mach-O files.
+.PP
+The default report includes file identity, MD5 and SHA-256 hashes, whole-file
+entropy, and all applicable detail tables. Detail selectors may be combined
+to choose tables; selectors unsupported by the input format are errors.
+.SH OPTIONS
+.TP
+.B \-\-headers
+Show executable headers.
+.TP
+.B \-\-sections
+Show sections, declared permission flags, and section entropy.
+.TP
+.B \-\-dependencies
+Show ELF or Mach-O dependencies.
+.TP
+.B \-\-symbols
+Show ELF or Mach-O symbols.
+.TP
+.B \-\-imports
+Show PE imports, including delay-load imports.
+.TP
+.B \-\-exports
+Show PE exports.
+.TP
+.B \-\-resources
+Show PE resources and bounded decoded payload previews.
+.TP
+.B \-\-program-headers
+Show ELF program headers.
+.TP
+.B \-\-load-commands
+Show Mach-O load commands and segment ranges.
+.TP
+.B \-\-observations
+Show structural observations about the file.
+.TP
+.B \-\-summary
+Show a compact report with identity, counts, and observations.
+Cannot be combined with detail selectors.
+.TP
+.B \-\-no-preview
+Suppress resource payload previews in the report.
+Resource parsing and validation still occur.
+.TP
+.BI \-\-entropy-window " BYTES"
+Measure entropy in windows of the specified positive decimal byte size.
+At most 4096 windows are permitted. This option may be specified once.
+.TP
+.BI \-\-code-page " N"
+Specify the fallback code page for legacy PE resource text without an explicit
+code page. N must be a positive decimal integer no greater than 4294967295.
+This option may be specified once.
+.TP
+.BI \-\-extract-resources " NEW_DIRECTORY"
+Extract PE resource payloads and an index.tsv file into a new directory.
+Reconstruct supported standalone icon and cursor files as well.
+The directory must not already exist. This option may be specified once.
+Parsing failures occur before directory creation; an output I/O failure
+may leave partial extracted files.
+.TP
+.B \-\-verbose
+Show additional details and diagnostic progress.
+.TP
+.B \-\-version
+Print the program version and exit.
+.TP
+.B \-\-help
+Print command-line help and exit.
+.TP
+.B \-\-
+End option processing. Exactly one input filename must follow;
+use this for a filename beginning with a hyphen.
+.SH EXAMPLES
+Inspect an executable:
+.PP
+.nf
+coffin /bin/ls
+.fi
+.PP
+Select ELF sections and dependencies:
+.PP
+.nf
+coffin \-\-sections \-\-dependencies ./program
+.fi
+.PP
+Show a compact PE report:
+.PP
+.nf
+coffin \-\-summary ./program.exe
+.fi
+.PP
+Extract PE resources into a directory that does not exist:
+.PP
+.nf
+coffin \-\-resources \-\-extract-resources ./resources ./program.exe
+.fi
+.PP
+Measure entropy in 4096-byte windows:
+.PP
+.nf
+coffin \-\-entropy-window 4096 ./program
+.fi
+.PP
+Inspect a filename beginning with a hyphen:
+.PP
+.nf
+coffin \-\- \-sample
+.fi
+.SH EXIT STATUS
+.TP
+.B 0
+Successful inspection, or successful help/version output.
+.TP
+.B 1
+Invalid arguments, unsupported or malformed input, resource-limit exhaustion,
+or an input/output failure.
+.SH LIMITS
+Parsing and extraction have fixed resource budgets. Exceeding a budget is an
+error, even when a larger file might otherwise be valid. Detail selectors
+control presentation; they do not bypass parser validation.
+.PP
+PE resource trees permit at most 16 directory levels, counting the root as
+level one, and 4096 directory reads. Ancestor cycles are rejected.
+Repeated references to a shared subtree are allowed and charged on each visit.
+Extraction is limited to 256 MiB including reconstructed image files.
+.PP
+Other limits bound metadata reads, table allocations, lookup work,
+resource previews, and entropy measurements. These budgets do not impose
+a whole-process time limit or a file-size limit on whole-file hashing.
+.SH INTERPRETATION
+Permission labels describe executable header flags, not runtime permissions.
+Entropy and structural observations are descriptive and do not establish
+whether a file is malicious. MD5 is provided for identification and comparison;
+use SHA-256 for integrity checking rather than relying on MD5.
+.SH SEE ALSO
+.BR file (1),
+.BR readelf (1),
+.BR objdump (1),
+.BR sha256sum (1)
